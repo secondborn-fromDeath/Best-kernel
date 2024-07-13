@@ -1,9 +1,4 @@
 /*
-	They are using pointers meaning that you can use the first level as cushion without having to fix the next levels to fit it
-	now this also means that you have the "opportunity" to do silly shit with the layout of the tables, i dont do that LOL
-	each level is indeed forced to be 512*x
-
-
 Functions:
 		.getphys_free()				return array of physical pages
 		.getphys_identity()			return first page of a contiguous streak
