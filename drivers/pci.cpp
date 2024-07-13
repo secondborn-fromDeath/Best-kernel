@@ -1,10 +1,3 @@
-/*
-What this guy needs to do:
-		pipe arguments into the command port (CF8) and the data port (CFC) and return the read/written values
-		device enumeration	-> creating /dev structures, interfacing with acpi for PM function pointers
-		the IO apic the interrupt pin numbers (line relative, hence acpi is needed)
-*/
-
 enum pcitypes{ PCI_TO_PCI_DEVICE,PCI_TO_PCI_BRIDGE,};
 Class PciKing : King{
 	/*
@@ -89,9 +82,10 @@ Class PciKing : King{
 
 				newdev -> driver = NULL;	//NOTE ioctl needs to check for this
 				for (ustd_t g = 0; g < drivgod->length; ++g){
-					if !(drivgod->drivers[g]->check_classcode(newdev->geninfo)){
+					if !(vfs->descriptions[drivgod->drivers[g]]->driv->check_classcode(newdev->geninfo)){	//ugly but its too long
+					if !(vfs->descriptions[drivgod->drivers[g]]->driv->check_model(newdev->identification))){
 						newdev->driver = &drivgod->drivers[g];
-					}
+					}}
 				}
 
 				if (headertype == PCI_TO_PCI_DEVICE){
