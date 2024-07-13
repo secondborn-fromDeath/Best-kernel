@@ -71,7 +71,7 @@ Class PciKing : King{
 	The boot interface
 				Create virtual filesystem structures, bind them to a driver and then recurse if the device is a pci bridge
 	*/
-	void device_enum(Processor * processor, Virtual_fs * vfs, ustd_t bus_number){
+	void device_enum(Processor * processor, Virtual_fs * vfs, DriversGod * drivgod, ustd_t bus_number){
 		for (ustd_t device_number = 0; device_number < 32; ++device_number){
 			Device * newdev = vfs->pool_alloc(1);
 			newdev->bus = bus_number;
@@ -86,9 +86,13 @@ Class PciKing : King{
 				set_device_ranges(processor,newdev,headertype);
 				newdev->expansion_rom = get_expansionrom(processor,newdev);
 				newdev->multifunction_boo = get_multifunction_boolean(processor,newdev);
-				/*
-				DRIVER ASSIGNMENT CODE... TODO
-				*/
+
+				newdev -> driver = NULL;	//NOTE ioctl needs to check for this
+				for (ustd_t g = 0; g < drivgod->length; ++g){
+					if !(drivgod->drivers[g]->check_classcode(newdev->geninfo)){
+						newdev->driver = &drivgod->drivers[g];
+					}
+				}
 
 				if (headertype == PCI_TO_PCI_DEVICE){
 					device_enum(processor,vfs,bus_number+1);
