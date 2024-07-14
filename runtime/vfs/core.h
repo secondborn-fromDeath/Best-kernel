@@ -105,26 +105,27 @@ Class Virtual_fs : King{
 	void evictions_cycle(void);				//removes the contents of files with no listeners and deletes non-disk-backed files from memory
 
 	/*
-	Because the more complicated this gets the worse i am simply going to count the processes
-	holding a descriptor for the file, it gets called by the syscalls wrappers
+	See the File object for the way i do listeners to files
 	*/
 	void writeback_cycle(Virtual_fs * vfs,){
+		DisksKing * dking; get_disksking_object(dking);
 		for (ustd_t i = 0; i < this.length; ++i){
-			if (this.pool[i].meta.namelen){
-				if !(this.pool[i].listeners){
-					if (this.pool[i].pending_sync){ disksync(i);}
-					this.pool[i].shared_contents = 0;
+			if (this.ckarray[i]){
+				File * file = &this.descriptions[i];
+				ustd_t filemulti = get_multi_from_pagetype(file->mapped_pagetype);
+				ustd_t closedyet = 0;	//we sync to disk on lazy syncing when no listeners are present
+				for (ustd_t h = 0; h < file->pages_count; ++h){
+					if !(file->listeners[h]){
+						dking->write(file->disk,file->diskpos + filemulti*h,file->shared_contents[h],1,file->mapped_pagetype);
+						Kingmem * mm; get_kingmem_object(mm);
+						mm->manipulate_phys((file->shared_contents[i])<<5>>18<<1,actions.CLEAR);
+					}
+					else{ ++closedyet;}
 				}
+				if ((closedyet == file->pages_count) && (file->pending_sync)){ dking->sync(file);}	//NOTE there is some nuance to that function obviously...
 			}
 		}
 	}
-	void readmiss(ustd_t findex, Kingmem * mm, ustd_t pages_number, ustd_t pagetype){
-		if !(this.descriptions[findex].shared_contents){
-			this.descriptions[findex].shared_contents = get_free_identity(mm,pages_number,pagetype);
-			disk_read(this.descriptions[findex].disk,this.descriptions[findex].diskpos,this.descriptions[findex].shared_contents,pages_number,pagetype);
-			this.descriptions[findex].length = pages_number;        //reminder of the difference between this and meta.length
-	        }
-        }
 };
 
 
@@ -137,10 +138,26 @@ Class meta{
 };
 
 Class File{
-	meta data;
-	utsd_t parent_index;
-
-	union{
+	//type==DEVICE
+	struct{
+		uchar_t bus;
+		uchar_t device;
+		uchar_t irline;
+		uchar_t irpin;
+		ustd_t geninfo;			//class code...
+		ushort_t identification;	//oem low, devid high, because the process ends up being the same anyway
+		uchar_t ranges_mask;		//IO space / memory bit
+		uchar_t mutlifunction_boo;
+		ulong_t bases[6];		//64bit prefetchables in pcibridge...
+		ustd_t lengths[6];		//they are not going to need more than that.
+		ustd_t expansion_rom;		//holy shit its mikerkode
+		Device_driver * driver;
+		ustd_t type;			//max function number under ioctl
+	};
+	struct{
+		meta data;
+		utsd_t parent_index;
+			union{
 		//...
 		struct{
 			ustd_t disk;
@@ -153,49 +170,41 @@ Class File{
 				};
 				//..
 				struct{
-					//type==STORAGE
-					struct{
-						ustd_t length;		//in pages, in memory
-						ulong_t listeners;	//processes holding a descriptor
-						void * shared_contents;	//otherwise SYS_READ reads from shared mappings
-						ustd_t pending_sync;
-					};
-					//type==SWAPFILE
-					struct{
-						Class Kshm swap;
+					ustd_t openers;
+					void ** shared_contents;
+					uchar_t * listeners;	//listeners are per-page and not per-file
+					ustd_t pages_count;
+					ustd_t mapped_pagetype;
+					union{
+						//type==STORAGE
+						struct{
+							ustd_t length;		//in pages, in memory
+							ustd_t pending_sync;
+						};
+
+						//type==SWAPFILE
+						Kshm swap;
+
+						//type==DRIVER
+						struct{
+							ustd_t classcodes_file;
+							ustd_t models_file;
+							Runtime_driver * rn;
+						};
 					};
 				};
 			};
 		};
-
-		//type==DEVICE
-		struct{
-			uchar_t bus;
-			uchar_t device;
-			uchar_t irline;
-			uchar_t irpin;
-			ustd_t geninfo;			//class code...
-			ushort_t identification;	//oem low, devid high, because the process ends up being the same anyway
-			uchar_t ranges_mask;		//IO space / memory bit
-			uchar_t mutlifunction_boo;
-			ulong_t bases[6];		//64bit prefetchables in pcibridge...
-			ustd_t lengths[6];		//they are not going to need more than that.
-			ustd_t expansion_rom;		//holy shit its mikerkode
-			struct driver{
-				ushort_t length;
-				(void)(*) functions;
-			};
-		};
-
 	};
 };
 Class Directory : File;
 Class Storage : File;
 Class Device : File;
 Class KingSwap : File;
+Class Driver : File;
 
 Class Descriptor{
 	ulong_t desc_index;
 	ustd_t polled;
-	ustd_t flags;
+	ustd_t flags;		//the first bit of flags indicates a file mapping if set
 };
