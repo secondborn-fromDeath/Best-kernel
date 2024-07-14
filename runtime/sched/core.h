@@ -1,3 +1,4 @@
+
 #include <generic/types.h>
 #include <conf/processing.cfg>
 #include <other/userspace_environment.h>
@@ -11,10 +12,6 @@ Class Thread{
 	sig_t sigmask;
 	sig_t sigset;
 	(void (*)(void * data))[MAXSIG];
-	ustd_t max_desc;
-	ustd_t desc_count;
-	Descriptor ** desc;
-	void * code;
 	ustd_t stacksize;
 };
 
@@ -27,6 +24,8 @@ Class Process{
 	tid_t wk_cnt;
 	Thread ** workers;
 	descriptor_t max_desc;	//cant change at process-runtime
+	ustd_t descriptors;	//current
+	Descriptor ** descs;
 };
 
 Class Processor{
