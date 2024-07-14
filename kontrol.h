@@ -1,13 +1,12 @@
-omg i lost stream init too...
-
 //all kings have a mutex
 
 Class ProcessorsGod{ Processor structs[256];};
 Class Kontrol{
 	void * kernelcode;
+	struct mchk mchk_info;
 	struct efi_functions efifuncs;
 
-	King kings[7];
+	King kings[12];		//this became so fucking bloated jesus
 };
 enum kings{ MEMORY,PROCESS,THREAD,VIRTUAL_FS,DESCRIPTOR,POINTER,DISK,SHMEMPOOL};
 
@@ -55,13 +54,13 @@ Class King{
 	/*
 	NOTE in case you are ever in an architecture without the "send to everyone but me" option you can send the interrupt to the highest processor
 	which will then send things cascading down, receivers interrupt, unwind the stack, check if they were executing something within the protected range
-	of the mutex and then go back to doing their thing, this is faster than doing the "interrupt then halt" ugabuga thing
+	of the mutex and then go back to doing their thing
 	*/
 	ustd_t stream_init(ustd_t king_index){
 		Kontrol * ctrl; get_kontrol_object(ctrl);
 		King * king = ctrl->kings[king_index];
 		for (ustd_t i = 0; i < 256; ++i){		//reading from the calendar to see if other processors are holding the mutex
-			if (king->calendar[i]){
+			if (king->calendar[i == 255]){
 				__asm__(
 				"clflush (%%rax)\n\t"
 				"clflush 64(%%rax)\n\t"
@@ -92,9 +91,11 @@ Class Kingmem{
 	void * phys_ram_table;
 	ustd_t paging;
 };
-Class Kingprocess{ Process * pool : King.pool;};
-Class Kingthread{ Thread * pool : King.pool;}
-Class Kingptr{ auto ** pool : King.pool;}
-Class Kshm{ struct pag{ uchar_t [4096];} * pool : King.pool;}	//needed for things like realloc
-Class Kingdescriptor{ Descriptor * pool : King.pool;}
-Class Virtual_fs : King;
+Class Kingprocess : King{ Process * pool : King.pool;}
+Class Kingthread : King{ Thread * pool : King.pool;}
+Class Kingptr : King{ auto ** pool : King.pool;}
+Class Kshm : King{ struct pag{ uchar_t [4096];} * pool : King.pool;}	//needed for things like realloc
+Class Kingdescriptor : King{ Descriptor * pool : King.pool;}
+Class Virtual_fs : King{ File * descriptions : King.pool;}
+Class DriversGod : King{ Driver ** pool : King.pool;}
+Class DriverProcessGod : King{ Runtime_driver * pool : King.pool;}	//this keeps them all
