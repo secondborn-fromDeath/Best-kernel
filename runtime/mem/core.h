@@ -29,6 +29,8 @@ Bits:
 		9					if set it means the page is taken, for directories refer to PS bit to see wether they can be traversed for the smaller pages within
 		10-11					0 means segfault, 1 means map, 2 means reserve, 3 means swapped
 		57-62					virtual disk number for swapped pages, reserved (ramdisk) in all other cases
+		on file mapping 57-62 hold an index into the descriptors table for filemapped descriptors
+
 
 Due to the need for the top bits we do 4level paging, nobody has that much memory anyway
 */
@@ -312,11 +314,35 @@ Class Kingmem{
 				manipulate_phys(&phys,1,pagetype,actions.SET);
 				this.calendar[processor_id] = 0;
 			break;}
+			case mode.MAP:{
+				Process * process; get_process_object(process);
+				ustd_t mapdescindex = (entry*) <<1>>58;		//omitting exec bit
+				ustd_t i;
+				for (i = 0; i < process->descnum; ++i){	//this is unneeded but whatever for now NOTE OPTIMIZATION
+					if (process->descs[i]->flags & 1){ --mapdescindex;}
+					if !(mapdescindex){ break;}
+				}
+				Virtual_fs * vfs; get_vfs_object(vfs);
+				File * file = &vfs->descriptions[process->descs[i]->findex];
+
+				ustd_t filemulti = get_multi_from_pagetype(file->mapped_pagetype);
+				ustd_t basechar = (entry*)<<5>>18<<1 / filemulti;
+
+				if !(file->listeners[basechar]){
+					void * newphys = get_free_identity(1,file->mapped_pagetype);
+					DisksKing * dking; get_disksking_object(dking);
+					dking->read(file->disk,file->diskpos + filemulti*basechar,newphys,1,file->mapped_pagetype);
+
+					entry* = ((entry*)<<5>>18<<1) | newphys;		//assuming that the address never gets silly this is fine
+				}
+				++file->listeners[basechar]; //reminder this isnt done in fmap/remap
+			break;}
 			case mode.SEGFAULT:{	//something something zero trust
 				Process * process; get_process_object(process);
 				process->sigset |= SIGSEGV;
 			break;}
 		}
+
 		__asm__("iret\n\t");
 	}
 	void hardfault_handler(void){
