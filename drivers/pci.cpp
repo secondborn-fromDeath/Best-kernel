@@ -82,10 +82,9 @@ Class PciKing : King{
 
 				newdev -> driver = NULL;	//NOTE ioctl needs to check for this
 				for (ustd_t g = 0; g < drivgod->length; ++g){
-					if !(vfs->descriptions[drivgod->drivers[g]]->driv->check_classcode(newdev->geninfo)){	//ugly but its too long
-					if !(vfs->descriptions[drivgod->drivers[g]]->driv->check_model(newdev->identification))){
-						newdev->driver = &drivgod->drivers[g];
-					}}
+					if !(vfs->descriptions[drivgod->drivers[g]]->driv->code->check_classcode(newdev->geninfo)){	//ugly but its too long
+					if !(vfs->descriptions[drivgod->drivers[g]]->driv->code->attach_model(newdev))){
+						break;}}
 				}
 
 				if (headertype == PCI_TO_PCI_DEVICE){
