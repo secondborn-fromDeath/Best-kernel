@@ -14,7 +14,6 @@ What does a disk do? You read from it and write to it.
 		.Swapping is dealt with at the file level
 */
 
-Class SwapKing;
 Class DisksKing{
 	void read(ustd_t disk, void * disk_offset, void * buf, ustd_t pages_number, ustd_t pagetype);
 	void write(ustd_t disk, void * disk_offset, void * buf, ustd_t pages_number, ustd_t pagetype);
