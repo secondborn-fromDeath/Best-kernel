@@ -1,4 +1,3 @@
-
 #include <generic/types.h>
 #include <conf/processing.cfg>
 #include <other/userspace_environment.h>
@@ -26,6 +25,7 @@ Class Process{
 	descriptor_t max_desc;	//cant change at process-runtime
 	ustd_t descriptors;	//current
 	Descriptor ** descs;
+	ustd_t polls_count;	//if this is above 20 you swap off the pagetree
 };
 
 Class Processor{
