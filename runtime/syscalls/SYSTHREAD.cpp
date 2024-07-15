@@ -1,17 +1,18 @@
 //on the tin it says that you are cloning everything (at least until we have flags, TODO) from the calling thread...
 void thread(){
 	Kingthread * ktrd; get_kingthread_object(ktrd);
-	ustd_t processor_id = stream_init(kings.THREAD);
+	ustd_t processor_id = ktrd->stream_init(void);
 	ulong_t thread_index = ktrd->pool_alloc(1);
-	ktrd->calendar[processor_id] = 0;
+	__non_temporal ktrd->calendar[processor_id] = 0;
 
-	Thread * calling_thread = get_thread_object();
+	Thread * calling_thread = get_thread_object(void);
 	memcpy(ktrd->pool[thread_index], calling_thread, sizeof(Thread));
 
 	Kingptr * kptr; get_pointer_object(kptr);
-	stream_init(Kingptr);
+	kptr->stream_init(void);
 	ktrd->pool[thread_index].desc_indexes = kptr->pool_alloc(calling_thread->desc_count);
 	kptr->pool[processor_id] = 0;
+	__non_temporal kptr->calendar[processor_id] = 0;
 	memcpy(ktrd->pool[thread_index].desc_indexes,calling_thread->desc_indexes,calling_thread->desc_count);
 
 	//making a stack for the new thread
