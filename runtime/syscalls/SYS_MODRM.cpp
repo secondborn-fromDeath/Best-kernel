@@ -16,14 +16,18 @@ void modrm(ustd_t drivindex){
 			Storage * classcodes = &vfs->descriptions[ourguy->classcodes];
 			Storage * models = &vfs->descriptions[ourguy->models];
 
+			ustd_t processor_id = dking->stream_init(void);
 			dking->write(classcodes->disk,classcodes->diskpos,classcodes->shared_contents,classcodes->meta.length,pag.SMALLPAGE);
 			dking->write(models->disk,models->diskpos,models->shared_contents,models->meta.length,pag.SMALLPAGE);
+			dking->calendar[processor_id] = 0;
 
 			vfs->pool_free(ourguy,1);
 			vfs->pool_free(classcodes,1);
 			vfs->pool_free(models,1);
 
-			reenact_kernelspace_setup;
+			broadcast_ipi_allbut_self(REQ_DOWN_HANDLER);	//see kontrol.h and interrupts
+			reenact_kernelspace_setup(void);
+			broadcast_ipi_allbut_self(REQ_UP_HANDLER);
 		}
 	}
 }
