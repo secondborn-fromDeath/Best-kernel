@@ -17,6 +17,7 @@ enum filetypes{
 	DIRECTORY,
 	STORAGE,
 	DEVICE,
+	CONNECTION,
 };
 
 Class Virtual_fs : King{
@@ -80,7 +81,9 @@ Class Virtual_fs : King{
 				if (this.pool[index].contents >> 50){	//meaning if the file is not in RAM
 					if !(this.pool[index].length){return 3;}
 					DisksKing * dking; get_disksking_object(dking);
+					ustd_t processor_id = dking->stream_init(void);
 					dking->read(buf,this.pool[index].disk,this.pool[index].diskpos+offset,length);
+					__non_temporal dking->calendar[processor_id] = 0;
 				}
 				else{ memcpy(buf,this.pool[index].contents+offset,amount);}
 			return 0;}
@@ -95,20 +98,23 @@ Class Virtual_fs : King{
 				if (this.pool[index].contents >> 50){	//meaning if the file is not in ram
 					if !(this.pool[index].length){return 3;}
 					DisksKing * dking; get_disksking_object(dking);
+					ustd_t processor_id = dking->stream_init(void);
 					dking->write(this.pool[index].disk,this.pool[index].diskpos+offset,buf,length);
+					__non_temporal dking->calendar[processor_id] = 0;
 				}
 				else{ memcpy(this.pool[index].contents+offset,amount);}
 			return 0;}
 		}
 	}
 	ulong_t close(ulong_t index);				//TODO removes the descriptor from the process' pool
-	void evictions_cycle(void);				//removes the contents of files with no listeners and deletes non-disk-backed files from memory
 
 	/*
 	See the File object for the way i do listeners to files
 	*/
 	void writeback_cycle(Virtual_fs * vfs,){
 		DisksKing * dking; get_disksking_object(dking);
+		ustd_t processor_id = dking->stream_init(void);
+
 		for (ustd_t i = 0; i < this.length; ++i){
 			if (this.ckarray[i]){
 				File * file = &this.descriptions[i];
@@ -118,13 +124,15 @@ Class Virtual_fs : King{
 					if !(file->listeners[h]){
 						dking->write(file->disk,file->diskpos + filemulti*h,file->shared_contents[h],1,file->mapped_pagetype);
 						Kingmem * mm; get_kingmem_object(mm);
-						mm->manipulate_phys((file->shared_contents[i])<<5>>18<<1,actions.CLEAR);
+						mm->manipulate_phys((file->shared_contents[i])<<5>>18<<1,1,file->mapped_pagetype,actions.CLEAR);
+						mm->used_memory -= get_multi_from_pagetype(file->mapped_pagetype)/4096;
 					}
 					else{ ++closedyet;}
 				}
 				if ((closedyet == file->pages_count) && (file->pending_sync)){ dking->sync(file);}	//NOTE there is some nuance to that function obviously...
 			}
 		}
+		__non_temporal dking->calendar[processor_id] = 0;
 	}
 };
 
@@ -196,6 +204,8 @@ Class File{
 			};
 		};
 	};
+	//type==CONNECTION
+	Socket sock;
 };
 Class Directory : File;
 Class Storage : File;
