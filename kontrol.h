@@ -5,6 +5,7 @@ Class Kontrol{
 	void * kernelcode;
 	struct mchk mchk_info;
 	struct efi_functions efifuncs;
+	ustd_t memory_meridian;			//this is a counter for scheduler entries, when it gets to 5 you run the memory evaluation for vfs
 
 	King kings[12];		//this became so fucking bloated jesus
 };
@@ -90,6 +91,8 @@ Class Kingmem{
 	void * vm_ram_table;
 	void * phys_ram_table;
 	ustd_t paging;
+	ulong_t sizeof_ramdisk;
+	ulong_t used_memory;	//as the ratio of total memory to this decreases you are going to swap more aggressively, starting from 50% used
 };
 Class Kingprocess : King{ Process * pool : King.pool;}
 Class Kingthread : King{ Thread * pool : King.pool;}
@@ -99,3 +102,4 @@ Class Kingdescriptor : King{ Descriptor * pool : King.pool;}
 Class Virtual_fs : King{ File * descriptions : King.pool;}
 Class DriversGod : King{ Driver ** pool : King.pool;}
 Class DriverProcessGod : King{ Runtime_driver * pool : King.pool;}	//this keeps them all
+Class SchedKing : King;							//this mutex runs for the entirety of the scheduler
