@@ -8,6 +8,7 @@ Class Exec_header{
 	ushort_t max_descriptors;
 	ulong_t expected_memory_usage;	//this is in gigabytes
 	ustd_t start;
+	ustd_t programtype;
 	uchar_t id[32];
 	ulong_t checksum;
 };
@@ -26,13 +27,18 @@ ustd_t exec(ustd_t findex){
 	Virtual_fs * vfs; get_vfs_object(vfs);
 	DisksKing * dking; get_disksking_object(dking);
 
-	ustd_t processor_id = stream_init(kings.MEMORY);
+	ustd_t processor_id = mm->stream_init(void);
+	dking->stream_init(void);
 
 	Exec_header * header = mm->reserve_phys_identity(1,pag.SMALLPAGE);
 	dking->read(vfs->descriptions[findex]->disk,vfs->descriptions[findex]->diskpos,header,1,pag.SMALLPAGE);	//mapping only the header so the system doesnt crash opening something like a gigabyte large video file
 	//The checksum is valid if subtracting it to the sum of the other fields ends up being 0
-	if !(header->heapsize+header->tls_size+ header->stacksize+header->max_desxriptors+header->start+((ustd_t *)header->id)[0]+	\
-	((ustd_t *)header->id)[8]+((ustd_t *)header->id)[16]+((ustd_t *)header->id)[24]	== header->checksum){ return 1;}
+	if !(header->heapsize+header->tls_size+ header->stacksize+header->max_descriptors+header->start+header->expected_memory_usage+header->program_type+	\
+	((ustd_t *)header->id)[0]+((ustd_t *)header->id)[8]+((ustd_t *)header->id)[16]+((ustd_t *)header->id)[24] == header->checksum){ return 1;}
+
+	Thread * calling_thread = get_thread_object();
+	Process * calling_process = calling_thread->parent;
+	if (header_program_type == programtypes.SYSTEM) && (calling_process-<owner_id != users.ROOT){ return 2;}
 
 	void * executable[vfs->descriptions[findex].meta.length];
 	executable[0] = header;
@@ -40,15 +46,15 @@ ustd_t exec(ustd_t findex){
 		executable[i] = mm->reserve_phys_identity(mm,1,SMALLPAGE);
 		dking->read(vfs->descriptions[findex]->disk,vfs->descriptions[findex]->diskpos+i*4096,header,1,pag.SMALLPAGE);
 	}
-	__nontemporal mm->calendar[processor_id] = 0;
+
+	__non_temporal dking->calendar[processor_id] = 0;
+	__non_temporal mm->calendar[processor_id] = 0;
 
 	Kingprocess * kprc; get_kingprocess_object(kprc);
 	stream_init(kings.PROCESS);
 	ulong_t process_index = kprc->pool_alloc(1);
-	__nontemporal kprc->calendar[processor_id] = 0;
+	__non_temporal kprc->calendar[processor_id] = 0;
 
-	Thread * calling_thread = get_thread_object();
-	Process * calling_process = calling_thread->parent;
 	kprc->pool[process_index] = {
 //		.pid = process_index,
 		.owner_id = calling_process->owner_id,		//inherited from the launching shell
@@ -62,12 +68,12 @@ ustd_t exec(ustd_t findex){
 	stream_init(kings.POINTERS);
 	kprc->pool[process_index]->workers = kptr->pool_alloc(1);
 	kprc->pool[process_index]->descs = kptr->pool_alloc(2);
-	__nontemporal ptr->calendary[processor_id] = 0;
+	__non_temporal ptr->calendary[processor_id] = 0;
 
 	Kingthread * ktrd; get_kingthread_object(ktrd);
 	stream_init(kings.THREAD);
 	kprc->pool[process_index]->workers[0] = ktrd->pool_alloc(1);
-	__nontemporal ktrd->calendar[processor_id] = 0
+	__non_temporal ktrd->calendar[processor_id] = 0
 
 	Kingdescs * kdescs; get_kingdescriptors_object(kdescs);
 	stream_init(kings.DESCRIPTORS);
@@ -115,7 +121,7 @@ ustd_t exec(ustd_t findex){
 	}
 	entry* = 0;
 
-	__nontemporal mm->calendar[processor_id] = 0;
+	__non_temporal mm->calendar[processor_id] = 0;
 
 	mm->vm_ram_table = treebackup;
 	return 0;
