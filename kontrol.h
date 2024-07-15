@@ -102,4 +102,3 @@ Class Kingdescriptor : King{ Descriptor * pool : King.pool;}
 Class Virtual_fs : King{ File * descriptions : King.pool;}
 Class DriversGod : King{ Driver ** pool : King.pool;}
 Class DriverProcessGod : King{ Runtime_driver * pool : King.pool;}	//this keeps them all
-Class SchedKing : King;							//this mutex runs for the entirety of the scheduler
