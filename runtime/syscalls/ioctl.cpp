@@ -17,11 +17,13 @@ ulong_t ioctl(ustd_t drivindex, ustd_t funcindex, auto * data, auto * ret){
 
 	Kingmem * mm; get_kingmem_object(mm);
 	Process * process = get_process_object();
+	ustd_t processor_id = mm->stream_init(void);
 	void * backup = mm->vm_ram_table;
 	mm->vm_ram_table = process->pagetree;
-	auto * passdata = vmto_phys(data);
-	auto * passret = vmto_phys(ret);
+	auto * passdata = mm->vmto_phys(data);
+	auto * passret = mm->vmto_phys(ret);
 	mm->vm_ram_table = backup;
+	__non_temporal mm->calendar[processor_id] = 0;
 
 	(dev->driv->code->functions[funcindex])(passdata,passret);
 	return 0;
