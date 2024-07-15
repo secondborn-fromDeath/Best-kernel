@@ -1,33 +1,40 @@
 /*
-This removes a driver from DriversGod, unloads the files linked to the driver and the driver code, then innescates the device enumeration
+	Takes an an argument a module directory with files in the following order:
+	code	classcodes	models
 
+	Loads it and the info files, attaches the driver to DriversGod and the info file indexes to the driver structure
+	the driver will be usable when the next device enumeration gets done
 */
 
-void modrm(ustd_t drivindex){
+void modinsert(ustd_t dirindex){
 	Virtual_fs * vfs; get_vfs_object(vfs);
-	DriversGod * drivgod; get_driversgod_object(drivgod);
 	DisksKing * dking; get_disksking_object(dking);
+	Kingmem * mm; get_kingmem_object(mm);
 
-	Driver * ourguy = &vfs->descriptions[drivindex];
-	for (ustd_t g = 0; g < drivgod->length; ++g){
-		if (ourguy == drivgod->pool[g]){
-			drivgod->pool_free(&drivgod->pool[g],1);
+	Driver * driv = &vfs->descriptions[vfs->descriptions[dirindex]->children[0]];
+	Storage * classcodes =  &vfs->descriptions[vfs->descriptions[dirindex]->children[1]];
+	Storage * models =  &vfs->descriptions[vfs->descriptions[dirindex]->children[2]];
 
-			Storage * classcodes = &vfs->descriptions[ourguy->classcodes];
-			Storage * models = &vfs->descriptions[ourguy->models];
+	ustd_t processor_id = mm->stream_init(void);
+	driv->shared_contents = mm->get_free_identity(driv->meta.length,pag.SMALLPAGE);	//NOTE HARDENING
+	classcodes->shared_contents = mm->get_free_identity(classcodes->meta.length,pag.SMALLPAGE);
+	models->shared_contents = mm->get_free_identity(models->meta.length,pag.SMALLPAGE);
+	__non_temporal mm->calendar[processor_id] = 0;
 
-			ustd_t processor_id = dking->stream_init(void);
-			dking->write(classcodes->disk,classcodes->diskpos,classcodes->shared_contents,classcodes->meta.length,pag.SMALLPAGE);
-			dking->write(models->disk,models->diskpos,models->shared_contents,models->meta.length,pag.SMALLPAGE);
-			dking->calendar[processor_id] = 0;
+	dking->stream_init(void);
+	dking->read(driv->disk,driv->diskpos,driv->shared_contents,driv->meta.length,pag.SMALLPAGE);
+	dking->read(classcodes->disk,classcodes->diskpos,classcodes->shared_contents,classcodes->meta.length,pag.SMALLPAGE);
+	dking->read(models->disk,models->diskpos,models->shared_contents,models->meta.length,pag.SMALLPAGE);
+	__non_temporal dking->calendar[processor_id] = 0;
 
-			vfs->pool_free(ourguy,1);
-			vfs->pool_free(classcodes,1);
-			vfs->pool_free(models,1);
+	driv->classcodes = classcodes;
+	driv->models = models;
 
-			broadcast_ipi_allbut_self(REQ_DOWN_HANDLER);	//see kontrol.h and interrupts
-			reenact_kernelspace_setup(void);
-			broadcast_ipi_allbut_self(REQ_UP_HANDLER);
-		}
-	}
+	DriversGod * drivgod; get_driversgod_object(drivgod);
+	drivgod->stream_init(void);
+	Driver ** ptr = drivgod->pool_alloc(1);
+	__non_temporal drivgod->calendar[processor_id] = 0;
+	ptr* = driv;
+
+	(driv->code->start_offset + driv_code)(void);
 }
