@@ -15,14 +15,11 @@ the kernel is a solo project but device drivers (maybe even userspace applicatio
 
 # License
 Definitions:
-
 'Software' is any document distributed along this License
+'Plausibly alterated' stands to mean any document that may be be used to re-generate the Software through a computer program employing the reverse logic
+of the one that generated the document, meaning that all manner off transpilation into new "source code" that would have otherwise been exempt from this License
+is not allowed under the terms of this License.
 
-'Plausibly alterated' means any document that may be be used to re-generate the Software by employing the reverse "logic" (standing for both typewriter and computer) that was used to generate the document in question, meaning that all direct compilation, transpilation->compilation, or compilation into bytecode to be run through an emulator are forbidden by this License (see the Statement).
-
-
-Statement:
-
-You must not distribute the Software, be this through an "original work" or straight up plagiarism.
-
-You may modify and run the Software for your personal, individual use and you may distribute (possibly for a fee) documentation for the Software.
+You may distirbute the non-Plausibly alterated products of the Software such as runnable binaries, possibly for a fee
+but not the Software or its Plausibly alterated products.
+You may run products of the Software.
