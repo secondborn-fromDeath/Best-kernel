@@ -2,8 +2,9 @@
 better than even loonix.
 
 # "why is it better"
-because drivers on linux run on ring0 with the vm_to_phys() function which is a massive security threat because it takes nothing for my driver to set up its own paging (with knowledge of where the instruction pointer and stack are to avoid segfaults), set up its own gdt and overwrite the firmware.
-In my operating system (that will come too) drivers "run" on userland and use system calls to access devices.
+Linux drivers run on ring zero, which is as much privilege as the kernel has, with some tinkering things like "patching" the firmware
+are doable from a driver, idc that it is open source nobody has ever reviewed the 90 megabytes that is ACPICA.
+In my operating system (that will come too) drivers "run" on userland and use system calls to access devices (bit of a mess...).
 
 # Updates
 may take anywhere between a day and weeks depending on what it is I have implemented
