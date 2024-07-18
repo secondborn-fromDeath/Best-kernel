@@ -1,3 +1,10 @@
+/*
+What this guy needs to do:
+		pipe arguments into the command port (CF8) and the data port (CFC) and return the read/written values
+		device enumeration	-> creating /dev structures, interfacing with acpi for PM function pointers
+		the IO apic the interrupt pin numbers (line relative, hence acpi is needed)
+*/
+
 enum pcitypes{ PCI_TO_PCI_DEVICE,PCI_TO_PCI_BRIDGE,};
 Class PciKing : King{
 	/*
@@ -63,38 +70,48 @@ Class PciKing : King{
 	/*
 	The boot interface
 				Create virtual filesystem structures, bind them to a driver and then recurse if the device is a pci bridge
+
+	bus,dev,fun need to be passed as 0 (*==0 lol) initially
 	*/
-	void device_enum(Processor * processor, Virtual_fs * vfs, DriversGod * drivgod, ustd_t bus_number){
-		for (ustd_t device_number = 0; device_number < 32; ++device_number){
-			Device * newdev = vfs->pool_alloc(1);
-			newdev->bus = bus_number;
-			newdev->device = device_number;
-			newdev->devsel_timing = get_devsel_timing(processor,newdev);	//see boot_read/write
-			newdev->identification = get_idinfo(processor,newdev);
-			if !(newdev->identification == -1){				//first one that can fail AND be checkable
-				++this.enumerated_devices;
-				newdev->geninfo = get_geninfo(processor,newdev);
-				((ushort_t*)&newdev->irline)[0] = get_irline_and_pin(processor,bus_number,device_number);
-				ustd_t headertype = get_headertype(processor,newdev);
-				set_device_ranges(processor,newdev,headertype);
-				newdev->expansion_rom = get_expansionrom(processor,newdev);
-				newdev->multifunction_boo = get_multifunction_boolean(processor,newdev);
+	ustd_t device_enum(Processor * processor, Virtual_fs * vfs, DriversGod * drivgod, ustd_t bus_number, ustd_t * device_number, ustd_t function){
+		if (device_number* == 32){ return 0;}	//out
+		Device * newdev = vfs->pool_alloc(1);
+		newdev->bus = bus_number;
+		newdev->device = device_number*;
+		newdev->function = function;
+		newdev->devsel_timing = get_devsel_timing(processor,newdev);	//see boot_read/write
+		newdev->identification = get_idinfo(processor,newdev);
+		if !(newdev->identification == -1){				//first one that can fail AND be checkable
+			++this.enumerated_devices;
+			newdev->geninfo = get_geninfo(processor,newdev);
+			((ushort_t*)&newdev->irline)[0] = get_irline_and_pin(processor,bus_number,device_number*);
+			ustd_t multifunction_boo;
+			ustd_t headertype = get_headertype(processor,newdev,&multifunction_boo);
+			set_device_ranges(processor,newdev,headertype);
+			newdev->expansion_rom = get_expansionrom(processor,newdev);
+			newdev->multifunction_boo = get_multifunction_boolean(processor,newdev);
 
-				newdev -> driver = NULL;	//NOTE ioctl needs to check for this
-				for (ustd_t g = 0; g < drivgod->length; ++g){
-					if !(vfs->descriptions[drivgod->drivers[g]]->driv->code->check_classcode(newdev->geninfo)){	//ugly but its too long
-					if !(vfs->descriptions[drivgod->drivers[g]]->driv->code->attach_model(newdev))){
-						break;}}
-				}
-
-				if (headertype == PCI_TO_PCI_DEVICE){
-					device_enum(processor,vfs,bus_number+1);
+			newdev -> driver = NULL;	//NOTE ioctl needs to check for this
+			for (ustd_t g = 0; g < drivgod->length; ++g){
+				if !(vfs->descriptions[drivgod->drivers[g]]->driv->code->check_classcode(newdev->geninfo)){	//ugly but its too long
+				if !(vfs->descriptions[drivgod->drivers[g]]->driv->code->attach_model(newdev))){
+					break;}}
+			}
+			if (headertype == PCI_TO_PCI_DEVICE){
+				device_enum(processor,vfs,get_secondarybus_number(processor,newdev));
+			}
+			if ((multifunction_boo) && (!function)){
+				for (ustd_t g = 1; g < 4; ++g){
+					device_enum(processor,vfs,drivgod,bus_number,device_number,g);
 				}
 			}
-			else{vfs->pool_free(newdev,1);}
+
 		}
+		else{vfs->pool_free(newdev,1);}
+		++device_number*;
+		return 1;	//keep going
 	}
-	/*
+		/*
 	A bunch of get/set_XXX info from configuration space -type functions
 		i dont do cardbus, expresscard uses the type 0x0 header
 	*/
@@ -107,11 +124,10 @@ Class PciKing : King{
 		);
 		return mask<<22>>30;	//extracting the 2 bits from status-command
 	}
-	ustd_t get_headertype(Processor * processor, Device * dev){
-		return boot_read(processor,dev,0x6) <<16>>24;
-	}
-	uchar_t get_multifunction_boolean(Processor * processor, Device * dev){
-		return get_headertype(processor,dev) >>7;
+	ustd_t get_headertype(Processor * processor, Device * dev, ustd_t * multifunction){
+		ustd_t ret =  boot_read(processor,dev,0x6) <<16>>24;
+		if (ret & 128){ multifunction* = 1; ret &= 127;}		//signing the boolean and masking the bit
+		return ret;
 	}
 	ushort_t get_irline_and_pin(Processor * processor, Device * dev){	//returns them packed into a WORD
 		return boot_read(processor,dev,0x3c) <<16>>16;
@@ -135,6 +151,9 @@ Class PciKing : King{
 		ustd_t reg = 0x30;
 		if (headertype == PCI_TO_PCI_DEVICE){ reg += 8;}
 		return boot_read(processor,dev,reg);
+	}
+	ustd_t get_secondarybus_number(Processor * processor, Device * dev){
+		return boot_read(processor,dev,0x18);
 	}
 	/*
 	This function is going to return the base, type and size of the address range
