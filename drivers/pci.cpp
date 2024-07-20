@@ -129,7 +129,7 @@ Class PciKing : King{
 		if (ret & 128){ multifunction* = 1; ret &= 127;}		//signing the boolean and masking the bit
 		return ret;
 	}
-	ushort_t get_irline_and_pin(Processor * processor, Device * dev){	//returns them packed into a WORD
+	ushort_t get_irline_and_pin(Processor * processor, Device * dev){	//returns them packed into a WORD, line is lowbyte, pin is high
 		return boot_read(processor,dev,0x3c) <<16>>16;
 	}
 	ustd_t get_geninfo(Processor * processor, Device * dev){
