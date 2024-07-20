@@ -1,5 +1,5 @@
 void setup_memory(efimap_returns * data){
-	init_PAT(void);
+	init_PAT(void);	//TODO
 
 	efimap_descriptor * map = data->map*;
 	ustd_t i;
