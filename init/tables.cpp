@@ -36,6 +36,10 @@ void setup_idt(void){
 		if (h == 16){ ++interrupt_stack; h = 0;}
 		if (interrupt_stack == 2){ gate_type = INTERRUPT;}
 	}
+	constexpr for (ustd_t i = 7*16; i < 256; ++i){	//i dont use the top vectors
+		target* = NULL;				//present bit is not set...
+		target += 8;
+	}
 	set_idt(idt);
 }
 
