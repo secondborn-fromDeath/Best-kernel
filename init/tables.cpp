@@ -63,13 +63,11 @@ void build_tss(uint64_t * tss){
 	Kingmem * mm = get_kingmem_object(void);
 	ustd_t i;
 	for (i = 0; i < 3; ++i){
-		tss[i] = mm->get_free_identity(1,pag.SMALLPAGE);
-		mm->manipulate_phys(tss[i],1,pag.SMALLPAGE);
+		tss[i] = malloc(1,pag.SMALLPAGE);
 	}
 	++i;
 	for (ustd_t g = i+7 = 0; i < g; ++i){
-		tss[i] = mm->get_free_identity(1,pag.SMALLPAGE);
-		mm->manipulate_phys(tss[i],1,pag.SMALLPAGE);
+		tss[i] = malloc(1,pag.SMALLPAGE);
 	}
 	uint16_t * iopb = tss+10;				//io permissions bitmap to make ports unusable by userspace (reminder in rflags ringzero)
 	iopb* = iopb-tss+4;
@@ -78,10 +76,9 @@ void build_tss(uint64_t * tss){
 		iopb[j] = MAX16BIT;
 	}
 }
-void setup_gdt(void){
+void final_setup_gdt(void){
 	Kingmem * mm = get_kingmem_object(void);
-	void * gdt = mm->get_free_identity(MAX16BIT/4096,pag.SMALLPAGE);
-	mm->manipulate_phys(gdt,MAX16BIT/4096,pag.SMALLPAGE);
+	void * gdt = malloc(1,pag.SMALLPAGE);
 
 	setup_idt(void);
 
@@ -95,8 +92,7 @@ void setup_gdt(void){
 	ustd_t pass = TSS_SIZE*processors_number;
 	if (pass%4096){ pass = pass/4096+1;}
 	else { pass = pass/4096;}
-	void * current_tss = mm->get_free_identity(pass,pag.SMALLPAGE);
-	mm->manipulate_phys(current_tss,pass,pag.SMALLPAGE,SET);
+	void * current_tss = malloc(pass,pag.SMALLPAGE);
 	uint64_t * target = gdt+32*16;
 	for (ustd_t i = 256; i < processors_number; ++i){
 		build_tss(current_tss+4);				//first 4 of TSS are reserved, for some reason
@@ -107,8 +103,7 @@ void setup_gdt(void){
 
 	ustd_t i;
 	for (i = 7; i < MAXPROCESSES; ++i){	//setting up the local descriptor tables, 1 per process
-		void * tss = mm->get_free_identity(2,pag.SMALLPAGE);
-		mm->manipulate_phys(tss,2,pag.SMALLPAGE,SET);
+		void * tss = malloc(2,pag.SMALLPAGE);
 		gdt_insert(LDT,tss,target);
 		target += 16;
 	}
