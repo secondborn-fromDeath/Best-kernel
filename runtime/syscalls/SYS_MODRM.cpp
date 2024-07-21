@@ -1,40 +1,33 @@
 /*
-	Takes an an argument a module directory with files in the following order:
-	code	classcodes	models
-
-	Loads it and the info files, attaches the driver to DriversGod and the info file indexes to the driver structure
-	the driver will be usable when the next device enumeration gets done
+Recursively removes modules
+Requires brothers to be asleep
 */
 
-void modinsert(ustd_t dirindex){
-	Virtual_fs * vfs; get_vfs_object(vfs);
-	DisksKing * dking; get_disksking_object(dking);
-	Kingmem * mm; get_kingmem_object(mm);
+void quirkrm(DriversGod * drivgod, Virtual_fs * vfs, QuirksGod * qgod, drivQuirk * unborn){
+	for (ustd_t i = 0; i < unborn->length;;){
+		if (unborn->ckarray[i]){
+			modrm_recu(drivgod,vfs,qgod,unborn->pool[i]);
+			++i;
+		}
+	}
+	qgod->pool_free(unborn,1);
+}
+void modrm(DriversGod * drivgod, Virtual_fs * vfs, QuirksGod * qgod, fiDriv * unborn){
+	for (ustd_t i = 0; i < unborn->d->length;;){
+		if (unborn->d->ckarray[i]){
+			quirkrm(drivgod,vfs,qgod,unborn->d->pool[i]);
+			++i;
+		}
+	}
+	vfs->pool_free(unborn,1);
+	drivgod->pool_free(unborn->double_link,1);
+}
+void modrm_wrap(ustd_t drivindex){	//index into the virtual filesystem
+	Virtual_fs * vfs = get_vfs_object(void);
+	DriversGod * drivgod = get_drivgod_object(void);
+	QuirksGod * qgod = get_quirksgod_object(void);
 
-	Driver * driv = &vfs->descriptions[vfs->descriptions[dirindex]->children[0]];
-	Storage * classcodes =  &vfs->descriptions[vfs->descriptions[dirindex]->children[1]];
-	Storage * models =  &vfs->descriptions[vfs->descriptions[dirindex]->children[2]];
-
-	ustd_t processor_id = mm->stream_init(void);
-	driv->shared_contents = mm->get_free_identity(driv->meta.length,pag.SMALLPAGE);	//NOTE HARDENING
-	classcodes->shared_contents = mm->get_free_identity(classcodes->meta.length,pag.SMALLPAGE);
-	models->shared_contents = mm->get_free_identity(models->meta.length,pag.SMALLPAGE);
-	__non_temporal mm->calendar[processor_id] = 0;
-
-	dking->stream_init(void);
-	dking->read(driv->disk,driv->diskpos,driv->shared_contents,driv->meta.length,pag.SMALLPAGE);
-	dking->read(classcodes->disk,classcodes->diskpos,classcodes->shared_contents,classcodes->meta.length,pag.SMALLPAGE);
-	dking->read(models->disk,models->diskpos,models->shared_contents,models->meta.length,pag.SMALLPAGE);
-	__non_temporal dking->calendar[processor_id] = 0;
-
-	driv->classcodes = classcodes;
-	driv->models = models;
-
-	DriversGod * drivgod; get_driversgod_object(drivgod);
-	drivgod->stream_init(void);
-	Driver ** ptr = drivgod->pool_alloc(1);
-	__non_temporal drivgod->calendar[processor_id] = 0;
-	ptr* = driv;
-
-	(driv->code->start_offset + driv_code)(void);
+	brothers_sleep(void);
+	modrm(drivgod,vfs,qgod,&vfs->descriptions[drivindex]);
+	brothers_wake(void);
 }
