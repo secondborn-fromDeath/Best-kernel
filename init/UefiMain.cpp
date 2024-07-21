@@ -1,31 +1,26 @@
-//NOTE reminder to compile with -m16
+void cli(void){__asm__("CLI\n\t");}
+void sti(void){__asm__("STI\n\t");}
 
-
-extern enable_A20(void);
-extern mswitch_16to32(void);
-
-
-void cli(void){ __asm__("CLI\n\t");
-}
-void secure_stackstate(void){				//standardizing the stack between IA32 and x64, gcc should cause no problems
-	__asm__ volatile(
-	"TEST %%ecx,%%ecx\n\t"
-	"JZ skip_pushes_efistate\n\t"
-	"MOVl (%%esp),%%eax\n\t"
-	"MOVl %%ecx,(%%esp)\n\t"			//efi image handle
-	"PUSH %%edx\n\t"				//efi system table
-	"PUSH %%eax\n\t"				//moving back the return address and returning
-	"skip_pushes_efistate:\n\t"
-	:::);
-}
-void UefiMain(void * imagehandle, void * efisystab){
+ustd_t UefiMain(void * image_handle, void * efisystab){
 	cli(void);
-	secure_stackstate(void);
-
 	enable_A20(void);
+	setup_MSRS(void);			//TODO
+	enable_apic(void);			//TODO
+	efimap_returns data;
+	void * boottab = get_bootservices_table(efisystab);
+	get_uefi_memmap(image_handle,efisystab,&data,boottab);
+	setup_kernel(&data);
+	POST_check(void);			//TODO acpi shutdown
 	setup_gdt(void);
-	mswitch_16to32(void);
-	auto * func = &32bit_start;
-	__asm__("JMPF %0\n\t"
-		::"r"(func):);		//NOTE danger
+	setup_idt(void);
+	enumerate_devices(void);		//must get done first
+	setup_drivers(void);
+	enumerate_devices(void);		//trust me
+	assign_interrupt_vectors(void);		//TODO
+	sti(void);
+	exit_bootservices(data->mapkey*,boottab);
+	mount(root_disk,root_partition_pos);
+	initialize_brothers(void);		//TODO
+	bystring_exec(init_system);		//TODO wrap
+	routine(void);
 }
