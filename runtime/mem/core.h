@@ -52,7 +52,7 @@ Class Kingmem{
 		ustd_t quota = 1;
 
 		memset(&tables[1],0,4*(pag.SMALLPAGE-pagetype));
-		tables[0] = get_process_pagetree();	//NOTE lol TODO TODO
+		tables[0] = get_process_pagetree(void);			//NOTE lol TODO TODO
 		memset(offsets,0,4*(pag.SMALLPAGE-pagetype));
 
 		for (ustd_t su = 0; su < pagetype; ++su);
@@ -91,25 +91,25 @@ Class Kingmem{
 			for (ustd_t h = 0; h < level_len; ++h){
 				location[h] = default_entry | (pointer<<13);
 			}
-			level_len = expected_usage*8;			//this is a LEA so no unrolling is for the best...
+			level_len = expected_usage*8;
 			pointer += level_len;
 		}
 		for (ustd_t h = 0; h < level_len; ++h){
 			location[h] = default_entry | (pointer<<12);
 		}
 	}
-	enum cache{ WRITEBACK,WRITETHROUGH,WRITEPROTECT,WRITECOMBINE,STRONG_UNCACHEABLE};
+	enum cache{ STRONG_UNCACHEABLE,WRITE_COMBINING,WRITE_THROUGH,WRITEBACK,WRITE_PROTECT,};
 	void * memreq_template(ustd_t pagetype, ustd_t mode, ustd_t cache, ustd_t exec){
 		if (pagetype != pag.SMALLPAGE){
-			rotateRight(cache,16);
+			__builtin__rotateright32(cache,16);
 			(ushort_t)cache <<=5;
-			rotateLeft(cache,16);
+			__builtin__rotateleft32(cache,16);
 		}
 		return (mode<<9) | cache | exec<<63;
 	}
 	ulong_t * vmto_entry(void * vm, ustd_t * pagetype){
 		pagetype* = 0;
-		Process * process = get_process_object();
+		Process * process = get_process_object(void);
 		void * base = process->vmtree;
 		ustd_t bit = pag.SMALLPAGE*9+12;
 		for (ustd_t g = 0; g < pag.SMALLPAGE; ++g){
@@ -282,13 +282,12 @@ Class Kingmem{
 	This swaps out to disks whatever pages have been marked as reserved in a process' pagetree
 	*/
 	void swap_process(DisksKing * dking){
-		DisksKing * dking; get_disksking_object(dking);
+		DisksKing * dking = get_disksking_object(void);
 		Process * process = get_process_object(void);
-		Virtual_fs * vfs; get_vfs_object(vfs);
-		Kingmem * mm; get_kingmem_object(mm);
+		Virtual_fs * vfs = get_vfs_object(void);
+		Kingmem * mm = get_kingmem_object(void);
 
-		ustd_t processor_id = process->stream_init(void);
-		vfs->stream_init(void);
+		process->stream_init(void);
 
 		//so basically i am resetting the entries after finding the position on disk each time, now you have to track how deep the i inside of the pagetree though
 		ustd_t pagetype = 0;
@@ -299,8 +298,8 @@ Class Kingmem{
 			if ((process->pagetree[i] & 512)&&(pagetype == pag.SMALLPAGE))||((pagetype != pag.SMALLPAGE)&&(!(process->pagetree[i] & 128))){		//so awful
 				if ((pagetype != pag.SMALLPAGE)&&(process->pagetree)){ break;}
 				for(ustd_t g = 0; g < dking->length; ++g){
-					ustd_t pages = get_multi_by_pagetype(pagetype)/4096;
-					swappages_pos = vfs->descriptions[dking->swaps[g]]->shm->pool_alloc(pages);
+					ustd_t pages = get_multi_from_pagetype(pagetype)/4096;
+					swappages_pos = dking-swaps[g]->shm->pool_alloc(pages);
 					if (swappages_pos){
 						void * identity = exchange_swap(&process->pagetree[i],swappages_pos);
 						dking->write(g,swappages_pos,identity,1,pagetype);
@@ -312,32 +311,29 @@ Class Kingmem{
 			if (i == scaler){ ++pagetype; scaler *= 512;}
 		}
 
-		__non_temporal process->calendar[processor_id] = 0;
-		__non_temporal vfs->calendar[processor_id] = 0;
+		__non_temporal process->calendar = 0;
 	}
 	void softfault_handler(void){
 		void * vm = __asm__("mov %%cr2,%%rax\n\t");
 		ustd_t pagetype;
 		ulong_t * entry = vmto_entry(vm,&pagetype);		//MASSIVE DANGER read the binary for how pagetype gets passed, if shit is grim use Kingmem (this is locked anyway)
 
-		Kingmem * mm; get_kingmem_object(mm);
-		ustd_t processor_id = mm->stream_init(void);
+		Kingmem * mm = get_kingmem_object(void);
+		mm->stream_init(void);
 
 		switch(entry* <<(64-12))>>53)
  			case mode.RESERVE:{
-				void * phys = mm->get_free_identity(1,pagetype);
-				mm->manipulate_phys(&phys,1,pagetype,actions.SET);
-				mm->calendar[processor_id] = 0;
+				void * phys = malloc(1,pagetype);
 			break;}
 			case mode.MAP:{
-				Process * process; get_process_object(process);
+				Process * process = get_process_object(void);
 				ustd_t mapdescindex = (entry*) <<1>>58;		//omitting exec bit
 				ustd_t i;
 				for (i = 0; i < process->descnum; ++i){	// NOTE OPTIMIZATION
 					if (process->descs[i]->flags & 1){ --mapdescindex;}
 					if !(mapdescindex){ break;}
 				}
-				Virtual_fs * vfs; get_vfs_object(vfs);
+				Virtual_fs * vfs = get_vfs_object(void);
 				File * file = &vfs->descriptions[process->descs[i]->findex];
 
 				ustd_t filemulti = mm->get_multi_from_pagetype(file->mapped_pagetype);
@@ -345,10 +341,10 @@ Class Kingmem{
 
 				if !(file->listeners[basechar]){
 					void * newphys = get_free_identity(1,file->mapped_pagetype);
-					DisksKing * dking; get_disksking_object(dking);
+					DisksKing * dking = get_disksking_object(void);
 					dking->stream_init(void);
 					dking->read(file->disk,file->diskpos + filemulti*basechar,newphys,1,file->mapped_pagetype);
-					__non_temporal dking->calendar[processor_id] = 0;
+					__non_temporal dking->calendar = 0;
 
 					entry* = ((entry*)<<5>>18<<1) | newphys;		//assuming that the address never gets silly this is fine
 				}
@@ -360,39 +356,39 @@ Class Kingmem{
 			break;}
 		}
 
-		__non_temporal mm->calendar[processor_id] = 0;
+		__non_temporal mm->calendar = 0;
 
-		__asm__("iret\n\t");
+		__asm__("IRETQ\n\t");
 	}
 	void hardfault_handler(void){
 		void * vm = __asm__("mov %%cr2,%%rax\n\t");
-		Process * process = get_process_object();
-		Kingmem * mm; get_kingmem_object(mm);
+		Process * process = get_process_object(void);
+		Kingmem * mm = get_kingmem_object(void);
 		ustd_t pagetype;
 		ulong_t * entry = mm->vmto_entry(vm,&pagetype);		//MASSIVE DANGER read the binary for how pagetype gets passed, if shit is grim use Kingmem (this is locked anyway)
 		if (pagetype != pag.SMALLPAGE){++bit;}
 		if ((entry*<<(64-12))>>54 == mode.SWAPPED){
 			ustd_t processor_id = mm->stream_init(void);
-			void * phys = mm->get_free_identity(1,&pagetype);
-			mm->manipulate_phys(&phys,1,pagetype,actions.SET);
+			void * phys = malloc(1,pagetype);
 			void * vmtab_backup = mm->vm_ram_table;
 			mm->vm_ram_table = process->pagetree;
 			void * newentry = mm->vmtree_fetch(1,pagetype);
 			newentry = mm->memreq_template(pagetype,RESERVE,WRITEBACK) | (phys<<5>>18<<1);	//userspace means writeback is fit.
 			mm->vm_ram_table = vmtab_backup;
-			__non_temporal mm->calendary[processor_id] = 0;
+			__non_temporal mm->calendar[processor_id] = 0;
 			ustd_t disk = (entry*) >>57;
 			void * doffset = (entry*) <<5>>18<<1;
 			DisksKing * dking; get_disksking_object(dking);
 			dking->stream_init(void);
 			dking->read(disk,doffset,phys,1,pagetype);
-			__non_temporal dking->ckarray(processor_id) = 0;
-			ustd_t pages = get_multi_by_pagetype(pagetype) / 4096;
+			__non_temporal dking->calendar = 0;
+			ustd_t pages = get_multi_from_pagetype(pagetype) / 4096;
 			Virtual_fs * vfs; get_vfs_object(void);
-			vfs->descriptions[dking->disks[disk]]->shm->stream_init(void)
+			vfs->descriptions[dking->disks[disk]]->shm->stream_init(void);
 			vfs->descriptions[dking->disks[disk]]->shm->pool_free(pages);
-			__non_temporal vfs->descriptions[dking->disks[disk]]->shm->stream_init(void)
+			__non_temporal vfs->descriptions[dking->disks[disk]]->shm->calendar = 0;
 		}
 		else{process->sigset |= SIGSEGV;}
+		__asm__("IRETQ\n\t");
 	}
 };
