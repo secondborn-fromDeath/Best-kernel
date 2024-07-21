@@ -29,6 +29,45 @@ Class Virtual_fs : King{
 	File * pool : King.pool;
 	extern get_rand32(void) : King.get_rand(void);
 
+	Storage * ramcontents_to_description(void * contents, ulong_t length, ustd_t pagetype){
+		Storage * newfren = this.pool_alloc(1);
+		ustd_t multi = get_multi_from_pagetype(pagetype);
+		ustd_t i;
+		for (i = 0; i < lenght; ++i){
+			newfren->shared_contents[i] = contents+i*multi;
+		}
+		newfren->meta.length = (newfren->shared_contents[i] - contents)*(multi/4096);
+		return newfren;
+	}
+
+	//loads a page of a file on disk if it is even needed
+	void load_page(DisksGod * dking, Storage * file, ustd_t page){
+		if !(file->shared_contents[page]){
+			file->shared_contents[page] = malloc(1,file->mapped_pagetype);	//NOTE HARDENING
+			dking->read(file->disk,file->diskpos+page*get_multi_from_pagetype(file->mapped_pagetype),file->shared_contents[page],1,file->mapped_pagetype);
+		}
+		return file->shared_contents[page];
+	}
+	void recursive_insert(FS_Driver * fs, Directory * dir){
+		if (dir->type != filetypes.DIRECTORY){ return;}
+		Kingptr * kptr = get_kingpointer_object(void);
+		dir->children = kptr->pool_alloc(dir->numberof_children);	//hardening...
+		fs->getdir_entries(dir);
+		for (ustd_t u = 0; u < dir->numberof_children; ++u){
+			File * newfag = this.pool_alloc(1);
+			fs->load_file(dir->children[u],newfag);
+			dir->children[u] = newfag;				//substituting for the vfs pointer
+			recursive_insert(dir->children[u],newfag);
+		}
+	}
+	void mount(ustd_t disk, ustd_t part){
+		DisksGod * dgod = get_disksgod_object(void);
+		FS_Driver * fs = dgod->disks[disk]->pool[part];		//NOTE HARDENING
+
+		File * root = this.pool_alloc(1);
+		fs->load_file(fs->meta.diskpos,root);
+		recursive_insert(fs,root);
+	}
 	/*
 	All of these take indexes to directories and relative paths and return indexes to Files, userspace wrappers use the local Descriptor pool
 	*/
@@ -80,10 +119,10 @@ Class Virtual_fs : King{
 			default:{
 				if (this.pool[index].contents >> 50){	//meaning if the file is not in RAM
 					if !(this.pool[index].length){return 3;}
-					DisksKing * dking; get_disksking_object(dking);
-					ustd_t processor_id = dking->stream_init(void);
+					DisksKing * dking = get_disksking_object(void);
+					dking->stream_init(void);
 					dking->read(buf,this.pool[index].disk,this.pool[index].diskpos+offset,length);
-					__non_temporal dking->calendar[processor_id] = 0;
+					__non_temporal dking->calendar = 0;
 				}
 				else{ memcpy(buf,this.pool[index].contents+offset,amount);}
 			return 0;}
@@ -98,9 +137,9 @@ Class Virtual_fs : King{
 				if (this.pool[index].contents >> 50){	//meaning if the file is not in ram
 					if !(this.pool[index].length){return 3;}
 					DisksKing * dking; get_disksking_object(dking);
-					ustd_t processor_id = dking->stream_init(void);
+					dking->stream_init(void);
 					dking->write(this.pool[index].disk,this.pool[index].diskpos+offset,buf,length);
-					__non_temporal dking->calendar[processor_id] = 0;
+					__non_temporal dking->calendar = 0;
 				}
 				else{ memcpy(this.pool[index].contents+offset,amount);}
 			return 0;}
@@ -112,8 +151,8 @@ Class Virtual_fs : King{
 	See the File object for the way i do listeners to files
 	*/
 	void writeback_cycle(Virtual_fs * vfs,){
-		DisksKing * dking; get_disksking_object(dking);
-		ustd_t processor_id = dking->stream_init(void);
+		DisksKing * dking = get_disksking_object(void);
+		dking->stream_init(void);
 
 		for (ustd_t i = 0; i < this.length; ++i){
 			if (this.ckarray[i]){
@@ -123,7 +162,7 @@ Class Virtual_fs : King{
 				for (ustd_t h = 0; h < file->pages_count; ++h){
 					if !(file->listeners[h]){
 						dking->write(file->disk,file->diskpos + filemulti*h,file->shared_contents[h],1,file->mapped_pagetype);
-						Kingmem * mm; get_kingmem_object(mm);
+						Kingmem * mm =  get_kingmem_object(void);
 						mm->manipulate_phys((file->shared_contents[i])<<5>>18<<1,1,file->mapped_pagetype,actions.CLEAR);
 						mm->used_memory -= get_multi_from_pagetype(file->mapped_pagetype)/4096;
 					}
@@ -132,7 +171,7 @@ Class Virtual_fs : King{
 				if ((closedyet == file->pages_count) && (file->pending_sync)){ dking->sync(file);}	//NOTE there is some nuance to that function obviously...
 			}
 		}
-		__non_temporal dking->calendar[processor_id] = 0;
+		__non_temporal dking->calendar = 0;
 	}
 };
 
@@ -142,10 +181,16 @@ Class meta{
 	ulong_t namelen;
 	ustd_t type;
 	ustd_t mode;
-	ulong_t length;		//length on disk
+	ulong_t length;		//length on disk		in smallpages i am assuming???
+	ustd_t disk;
+	ondisk_t diskpos;
 };
 
 Class File{
+	meta data;
+	File * parent;
+
+	union{
 	//type==DEVICE
 	struct{
 		uchar_t bus;
@@ -155,21 +200,17 @@ Class File{
 		ustd_t geninfo;			//class code...
 		ushort_t identification;	//oem low, devid high, because the process ends up being the same anyway
 		uchar_t ranges_mask;		//IO space / memory bit
-		uchar_t mutlifunction_boo;
+		uchar_t multifunction_boo;
 		ulong_t bases[6];		//64bit prefetchables in pcibridge...
 		ustd_t lengths[6];		//they are not going to need more than that.
 		ustd_t expansion_rom;		//holy shit its mikerkode
-		Device_driver * driver;
-		ustd_t type;			//max function number under ioctl
+		Driver * driver;
+		ustd_t maxfunc;			//max function number under ioctl
 	};
 	struct{
-		meta data;
-		utsd_t parent_index;
-			union{
+		union{
 		//...
 		struct{
-			ustd_t disk;
-			ondisk_t diskpos;
 			union{
 				//type==DIRECTORY
 				struct{
@@ -178,40 +219,33 @@ Class File{
 				};
 				//..
 				struct{
-					ustd_t openers;
 					void ** shared_contents;
-					uchar_t * listeners;	//listeners are per-page and not per-file
-					ustd_t pages_count;
 					ustd_t mapped_pagetype;
 					union{
 						//type==STORAGE
 						struct{
-							ustd_t length;		//in pages, in memory
+							ustd_t openers;
+							ustd_t length;		//in pages, in memory		idk the point of this???
+							uchar_t * listeners;	//listeners are per-page and not per-file
 							ustd_t pending_sync;
 						};
 
 						//type==SWAPFILE
 						Kshm swap;
-
-						//type==DRIVER
-						struct{
-							ustd_t classcodes_file;
-							ustd_t models_file;
-							Runtime_driver * rn;
-						};
 					};
 				};
 			};
 		};
 	};
-	//type==CONNECTION
-	Socket sock;
+	//type==DRIVER
+	Driver d;
+	};
 };
 Class Directory : File;
 Class Storage : File;
 Class Device : File;
 Class KingSwap : File;
-Class Driver : File;
+Class fiDriv : File;
 
 Class Descriptor{
 	ulong_t desc_index;
