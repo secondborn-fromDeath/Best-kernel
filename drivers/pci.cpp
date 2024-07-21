@@ -11,8 +11,10 @@ Class PciKing : King{
 	Runtime interface for device drivers
 	*/
 	void write(usdt_t dev, ustd_t function, ustd_t * source, ulong_t * offsets, ulong_t count){
-		Virtual_fs * vfs; get_vfs_object(vfs);
-		Processor * processor = get_processor_object();
+		Virtual_fs * vfs = get_vfs_object(void);
+		Processor * processor = get_processor_object(void);
+		this.stream_init(void);
+
 		ustd_t proto_mask = 1<<31 | vfs->descriptions[dev]->bus<<16 | vfs->descriptions[dev]->device<<11 | function<<8;
 		for (ustd_t g = 0; g < count; ++g){
 			ustd_t mask = proto_mask | offsets[g]>>2<<2;	//bit 1 is 32/64bit so we treat it as reserved since i dont support it
@@ -24,10 +26,13 @@ Class PciKing : King{
 			);
 			__attribute__((optimize("O0"))) for (ustd_t h = processor->frequency/this.frequency*dev->devsel_timing; h; --h);	//either 3 or 4
 		}
+		__non_temporal this.calendar = 0;
 	}
 	void read(ustd_t dev, ustd_t * destination, ulong_t * offsets, ulong_t count){
-		Virtual_fs * vfs; get_vfs_object(vfs);
-		Processor * processor = get_processor_object();
+		Virtual_fs * vfs = get_vfs_object(void);
+		Processor * processor = get_processor_object(void);
+		this.stream_init(void);
+
 		ustd_t proto_mask = 1<<31 | vfs->descriptions[dev]->bus<<16 | vfs->descriptions[dev]->device<<11 | function<<8;
 		for (ustd_t g = 0; g < count; ++g){
 			ustd_t mask = proto_mask | offsets[g]>>2<<2;
@@ -40,6 +45,7 @@ Class PciKing : King{
 			//here bus frequency is either 33Mhz or 66Mhz, devsel_timing is either 3, 4 or assumed 16
 			__attribute__((optimize("O0"))) for (ustd_t h = processor->frequency/this.frequency*dev->devsel_timing; h; --h);
 		}
+		__non_temporal this.calendar = 0;
 	}
 
 	/*
@@ -73,7 +79,7 @@ Class PciKing : King{
 
 	bus,dev,fun need to be passed as 0 (*==0 lol) initially
 	*/
-	ustd_t device_enum(Processor * processor, Virtual_fs * vfs, DriversGod * drivgod, ustd_t bus_number, ustd_t * device_number, ustd_t function){
+	ustd_t enumerate_devices(Processor * processor, Virtual_fs * vfs, DriversGod * drivgod, ustd_t bus_number, ustd_t * device_number, ustd_t function){
 		if (device_number* == 32){ return 0;}	//out
 		Device * newdev = vfs->pool_alloc(1);
 		newdev->bus = bus_number;
