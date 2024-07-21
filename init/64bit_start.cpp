@@ -6,7 +6,7 @@ void setup_memory(efimap_returns * data){
 	ulong_t sizeof_memory = 0;
 	for (i = 0; i < data->mapsize*; ++i){ sizeof_memory += map[i]->pages_number;}
 
-	ustd_t needtree = (sizeof_memory>>30)*(512+gigs*(512*512*512));	//4level paging
+	ustd_t needtree = 512+(sizeof_memory>>30)*(512+gigs*(512*512*512));	//4level paging
 	ustd_t needfull += sizeof(ProcessorsGod)+sizeof(IOapicGod)+sizeof(Kontrol)+sizeof(Kingmem)+sizeof(King)*8;		//pagetree plus key data
 
 	if (needfull%4096){ needfull = (needfull/4096+1)*4096;}	//losslessly rounding to pagesize
