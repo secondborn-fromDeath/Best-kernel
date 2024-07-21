@@ -1,33 +1,24 @@
-/*
-	Takes an an argument a module directory with files in the following order:
-	code	classcodes	models
+ustd_t modinsert(ustd_t drivindex){
+	Virtual_fs * vfs = get_vfs_object(void);
+	Kingmem * mm = get_kingmem_object(void);
+	Kingptr * kptr = get_kingpointer_object(void);
 
-	Loads it and the info files, attaches the driver to DriversGod and the info file indexes to the driver structure
-	the driver will be usable when the next device enumeration gets done
-*/
+	Directory * dev = vfs->descriptions[get_kontrol_object(void)->devices_directory];
+	dev->children = kptr->pool_realloc(dev->children_number,dev->children_number+1,dev->children);
+	fiDriv * driv = vfs->pool_alloc(1);
+	dev->children->children_number = driv;
+	++dev->children_number;
+	driv->runtime = &kprc->pool[exec(drivindex)];
 
-void modinsert(ustd_t dirindex){
-	Virtual_fs * vfs; get_vfs_object(vfs);
-	DisksKing * dking; get_disksking_object(dking);
-
-	Driver * driv = &vfs->descriptions[vfs->descriptions[dirindex]->children[0]];
-	Storage * classcodes =  &vfs->descriptions[vfs->descriptions[dirindex]->children[1]];
-	Storage * models =  &vfs->descriptions[vfs->descriptions[dirindex]->children[2]];
-
-	driv->shared_contents = get_free_identity(driv->meta.length,pag.SMALLPAGE);	//NOTE HARDENING
-	classcodes->shared_contents = get_free_identity(classcodes->meta.length,pag.SMALLPAGE);
-	models->shared_contents = get_free_identity(models->meta.length,pag.SMALLPAGE);
-
-	dking->read(driv->disk,driv->diskpos,driv->shared_contents,driv->meta.length,pag.SMALLPAGE);
-	dking->read(classcodes->disk,classcodes->diskpos,classcodes->shared_contents,classcodes->meta.length,pag.SMALLPAGE);
-	dking->read(models->disk,models->diskpos,models->shared_contents,models->meta.length,pag.SMALLPAGE);
-
-	driv->classcodes = classcodes;
-	driv->models = models;
-
-	DriversGod * drivgod; get_driversgod_object(drivgod);
-	Driver ** ptr = drivgod->pool_alloc(1);
+	DriversGod * relgod = get_driversgod_object(void);
+	for (ustd_t i = 0; i < driv->d->code->typerec; ++i){
+		if !(relgod->ckarray[driv->d->code->types[i]]){ return NULL;}
+		relgod = relgod->pool[driv->d->code->types[i]]
+	}
+	drivgod->stream_init(void);
+	fiDriv ** ptr = drivgod->pool_alloc(1);
+	__non_temporal drivgod->calendar = 0;
 	ptr* = driv;
 
-	(driv->code->start_offset + driv_code)(void);
+	run_ringthree(driv->runtime->children[0]);
 }
