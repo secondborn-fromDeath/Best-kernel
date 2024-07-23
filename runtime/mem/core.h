@@ -15,6 +15,11 @@ Functions:
 		.deallocate_vm()			return physical translation and reset entries to default
 		.memreq_template()			pipe page settings into a "template"
 
+		kernel API:				see kernlib/mem.h
+		.malloc()				reserved IDENTITY MAPPED memory
+		.mrealloc()			above, copy on write if there is nomem
+		.mfree()				macro for manipulate_mem
+
 		usrspc API:
 		.memalloc()				return pointer to virtually contiguous memory
 		.memmap()				return pointer to physically contiguous specified memory, no care for reservation status
@@ -98,7 +103,7 @@ Class Kingmem{
 			location[h] = default_entry | (pointer<<12);
 		}
 	}
-	enum cache{ STRONG_UNCACHEABLE,WRITE_COMBINING,WRITE_THROUGH,WRITEBACK,WRITE_PROTECT,};
+	enum cache{ STRONGUNCACHEABLE,WRITETHROUGH,WRITEBACK,WEAKUNCACHEABLE,WRITEPROTECT,WRITECOMBINING,};	//needed for setting write_combining and write_protect through the mtrrs
 	void * memreq_template(ustd_t pagetype, ustd_t mode, ustd_t cache, ustd_t exec){
 		if (pagetype != pag.SMALLPAGE){
 			__builtin__rotateright32(cache,16);
@@ -358,7 +363,7 @@ Class Kingmem{
 
 		__non_temporal mm->calendar = 0;
 
-		__asm__("IRETQ\n\t");
+		iret(void);
 	}
 	void hardfault_handler(void){
 		void * vm = __asm__("mov %%cr2,%%rax\n\t");
@@ -389,6 +394,6 @@ Class Kingmem{
 			__non_temporal vfs->descriptions[dking->disks[disk]]->shm->calendar = 0;
 		}
 		else{process->sigset |= SIGSEGV;}
-		__asm__("IRETQ\n\t");
+		iret(void);
 	}
 };
