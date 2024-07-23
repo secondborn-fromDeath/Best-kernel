@@ -25,15 +25,15 @@ void setup_TR(void){
 }
 void setup_CTRLS(void){			//too much to explain step by step, the page is 3073
 	ustd_t zero = (1<<31)|1;
-	ustd_t three = 0;
+//	ustd_t three = 0;		//this is the pagetree base LMAO
 	ustd_t four = (1<<5)|(1<<6)|(1<<8)|(1<<9)|(1<<10)|(1<<16)|(1<18)|(1<<19)|(1<<25);
 	ustd_t eight = 0;		//i do this manually with the local apic so its whatever...
 
 	__asm__(
 	"MOVl	%%eax,%%cr0\n\t"
 	"JMP\n\t"
-	"MOVl	%%ecx,%%cr3\n\t"
-	"JMP\n\t"
+//	"MOVl	%%ecx,%%cr3\n\t"
+//	"JMP\n\t"
 	"MOVl	%%edx,%%cr4\n\t"
 	"JMP\n\t"
 	"MOVl	%%ebx,%%cr8\n\t"
