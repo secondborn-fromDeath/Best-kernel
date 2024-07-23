@@ -1,104 +1,98 @@
-//all kings have a mutex
-
-Class ProcessorsGod{ Processor structs[256];};
+Class ProcessorsGod{ Processor a[256];};
+Class IOapic{
+	ustd_t global_interrupt_base;	//there is no guarantee of geometry by the ioapic id, read acpi spec MADT
+};
+Class IOapicGod{ IOapic a[16];};
 Class Kontrol{
 	void * kernelcode;
-	struct mchk mchk_info;
+	struct mchk mchk_info;			//acpi shit
 	struct efi_functions efifuncs;
 	ustd_t memory_meridian;			//this is a counter for scheduler entries, when it gets to 5 you run the memory evaluation for vfs
-
-	King kings[12];		//this became so fucking bloated jesus
+	void * lapic_pointer;
+	ushort_t shutdown_port;			//port number that triggers shutdown SMI
+	ustd_t device_directory_index;		//into vfs
 };
-enum kings{ MEMORY,PROCESS,THREAD,VIRTUAL_FS,DESCRIPTOR,POINTER,DISK,SHMEMPOOL};
+Class ACPI_driver;
 
-
-
-
-
-Class King{
-	ustd_t MUTEX;
-	ustd_t RELEASE;
-	ustd_t length;
+Class Hash{
+	ustd_t length;		//total length
+	ustd_t count;		//currently occupied slots
 	uchar_t * ckarray;
 	auto * pool;
-	uchar_t calendar[256];
-};
 
-	auto * pool_alloc(King * k, ustd_t length){
+	auto * pool_alloc(ustd_t length, ustd_t peasant_length){
 		ustd_t g = 0;
-		for (ustd_t i = 0; i < k->length; ++i){
-			if (k->ckarray[i] == 0){
+		for (ustd_t i = 0; i < this.length; ++i){
+			if (this.ckarray[i] == 0){
 				++g;
 			}else{ g = 0;}
 			if (g == length){
-				return k->pool + sizeof(k->pool*)*i;	//type generic
+				this.count += g;
+				return this.pool + sizeof(peasant_length)*i;	//type generic
 			}
 		}
 		return NULL;
 	}
-	void pool_free(King * k, void * section, ustd_t length){
-		for (ustd_t g = (section - k->pool)/sizeof(k->pool*); g < length; ++g){ k->ckarray[g] = 0;}
+	void pool_free(void * section, ustd_t length, ustd_t peasant_length){
+		for (ustd_t g = (section - this.pool)/sizeof(peasant_length); g < length; ++g){ this.ckarray[g] = 0;}
+		this.count -= g;
 	}
-	auto * pool_realloc(King * k, void * section, ustd_t prevlen, ustd_t newlen){
+	auto * pool_realloc(void * section, ustd_t prevlen, ustd_t newlen, ustd_t peasant_length){
 		Kshm * shm; get_shm_object(shm);
-		ustd_t processor_id = stream_init(kings.SHMEMPOOL);
-		void * backup = shm->pool_alloc(sizeof(k->pool*)*prevlen/4096+1);
+		ustd_t processor_id = shm->stream_init(void);
+		void * backup = shm->pool_alloc(sizeof(peasant_length)*prevlen/4096+1);
 		__non_temporal shm->calendar[processor_id] = 0;		//freeing early because safe pipe
-		memcpy(backup,section,sizeof(k->pool*)*prevlen);
-		k->pool_free(section,prevlen);
+		memcpy(backup,section,sizeof(peasant_length)*prevlen);
+		this.pool_free(section,prevlen);
 		void * ret = pool_alloc(k,newlen);
-		memcpy(ret,backup,sizeof(k->pool*)*prevlen);
-		shm->free(backup,sizeof(k->pool*)*prevlen/4096+1);
+		memcpy(ret,backup,sizeof(peasant_length)*prevlen);
+		shm->free(backup,sizeof(peasant_length)*prevlen/4096+1);
 		return ret;
 	}
+};
+Class King : Hash{
+	uchar_t calendar;
 
 	/*
 	NOTE in case you are ever in an architecture without the "send to everyone but me" option you can send the interrupt to the highest processor
 	which will then send things cascading down, receivers interrupt, unwind the stack, check if they were executing something within the protected range
 	of the mutex and then go back to doing their thing
 	*/
-	ustd_t stream_init(ustd_t king_index){
-		Kontrol * ctrl; get_kontrol_object(ctrl);
-		King * king = ctrl->kings[king_index];
-		for (ustd_t i = 0; i < 256; ++i){		//reading from the calendar to see if other processors are holding the mutex
-			if (king->calendar[i == 255]){
-				__asm__(
-				"clflush (%%rax)\n\t"
-				"clflush 64(%%rax)\n\t"
-				"clflush 128(%%rax)\n\t"
-				"clflush 196(%%rax)\n\t"
-				::"r"(king->calendar):
-				);
-				i = 0;
-			}
-		}
-		ustd_t interrupt_mask = 1<<14 | 1<<15 | 3<<18;		//assert, level triggered, all excluding self
-		ustd_t processor_id = ((ustd_t *)0xFEE0020)* >>56;
+	ustd_t stream_init(void){
+		__non_temporal while (this.calendar != 1);
 
-		((ustd_t *)0xFEE0300)* = interrupt_mask | king->MUTEX;	//sent
-		king->calendar[processor_id] = 255;
-		((ustd_t *)0xFEE0300)* = interrupt_mask | king->RELEASE;
-
-		return processor_id;
+		brothers_sleep(void);
+		__non_temporal this.calendar = 255;
+		brothers_wake(void);
 	}
-	void memreq_down_handler(void){__asm__("HLT\n\t");}
-	void memreq_up_handler(void){__asm__("add $16,%%rsp\n\t""iret\n\t");}	//ss,cs,ip,sp
+};
 
-
-
-Class DisksGod : King{ ustd_t * disks; ustd_t * swapdisks};	//indexes into vfs
+#define (x)(y)segment_alloc(size){	\
+	(xypool_alloc(size)-xypool)/sizeof(xypool*)	\
+}
+Class LDT : King{ struct{ uint64_t[2];} * pool : King.pool;
+	ustd_t gdt_index;		//otherwise you need sorting ON THE TRANSLATIONS
+};
+Class GDT : King{struct{ uint64_t[2];} * pool : King.pool;
+	auto * translate_ldt_entry(ustd_t index){
+		if (index < (get_processors_number(void)+256+1)){ return NULL;}
+		ulong_t * ptr = &this.pool[index];
+		return (ptr[0]<<32>>48)|(ptr[0]<<25>>58)|(ptr[0]>>56)|ptr[1];	//top is reserved as 0...
+	}
+};
 Class Kingmem{
 	void * vm_ram_table;
 	void * phys_ram_table;
 	ustd_t paging;
+	GDT gdt;
 	ulong_t sizeof_ramdisk;
 	ulong_t used_memory;	//as the ratio of total memory to this decreases you are going to swap more aggressively, starting from 50% used
 };
 Class Kingprocess : King{ Process * pool : King.pool;}
 Class Kingthread : King{ Thread * pool : King.pool;}
-Class Kingptr : King{ auto ** pool : King.pool;}
-Class Kshm : King{ struct pag{ uchar_t [4096];} * pool : King.pool;}	//needed for things like realloc
 Class Kingdescriptor : King{ Descriptor * pool : King.pool;}
 Class Virtual_fs : King{ File * descriptions : King.pool;}
-Class DriversGod : King{ Driver ** pool : King.pool;}
+Class Kingptr : King{ auto ** pool : King.pool;}
+Class Kshm : King{ struct pag{ uchar_t [4096];} * pool : King.pool;}	//needed for things like realloc		also base for Swap
+Class DriversGod : King{ fiDriv ** pool : King.pool;}
 Class DriverProcessGod : King{ Runtime_driver * pool : King.pool;}	//this keeps them all
