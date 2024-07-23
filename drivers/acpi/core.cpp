@@ -18,7 +18,7 @@ Class ACPI_driver{
 
 	/*
 	A myriad of get_ XXX methods...*/
-	void build_processors_and_ioapic_array(Processor * processors_array, IOapic * ioapics_array){
+	void build_processors_and_ioapic_array(ProcessorGod * prgod, IOapicGod * iogod){
 		ustd_t it_inc;
 		ACPI_SYSHEADER * table = sizeof(ACPI_SYSHEADER);
 		if (this.RSDP->revision > 0){ it_inc = 2; table += this.RSDP->XSDT_ptr;}
@@ -37,10 +37,15 @@ Class ACPI_driver{
 		//finding all of the processor and io apic structures and making the entries into the arrays
 		for (table = &madt->structures; table < madt->head->length; table += table->head->length){
 			if (table->head->type == ACPI_MADT_STRUCTURES.LOCALAPIC){
-				processors_array[table->apic_id]->online_capable |= table->flags>>1;	//everything from 2-31 is reserved 0?
+				prgod->pool[table->apic_id]->online_capable |= table->flags>>1;	//everything from 2-31 is reserved 0?
+				++prgod->count;
+
 			}
 			else if (table->head->type == ACPI_MADT_STRUCTURES.IOAPIC){
-				ioapics_array[table->ioapic_id]->global_interrupt_base = table->global_system_interrupt_base;
+				iogod->pool[table->ioapic_id]->global_base = table->global_system_interrupt_base;
+				iogod->pool[table->ioapic_id]->pointer = table->ioapic_ptroverride;
+				iogod->pool[table->ioapic_id]->linesnum = get_max_redir_entries(table->ioapic_ptroverride);
+				++iogod->count;
 			}
 		}
 	}
