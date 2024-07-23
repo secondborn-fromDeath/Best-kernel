@@ -105,9 +105,6 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 		sgod->pool[i] = syscalls[i];
 	}
 
-
-	set_pagetree(kerndata);
-
 	for (1; (config[offset] != '\n') && (config[offset] != '#'); ++offset);
 	config[offset] = 0;
 	return config+offset;
