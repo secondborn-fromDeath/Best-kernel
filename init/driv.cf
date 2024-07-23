@@ -1,0 +1,8 @@
+The syntax for the config file starts in the line past the pounds, everything between a pound and a newline is a comment,
+Maximum filename length is 56 bytes, BE WARY!
+########################################################################################################################
+/something.mod#		driver names start with a slash in front of them for geometry reasons
+/acpi.mod#		the strings terminate with newlines or pounds, x.mod#y.mod is valid syntax
+/nic.mod#		the directory under which drivers reside is (FAT32 partition)/drivers
+/trail.mod#		2 newlines in a row designate the end of the file, scroll down
+
