@@ -24,7 +24,6 @@ void assign_vectors(void){
 		else{ up_down = 0;}
 		vectors[i] = offset;
 
-		//so basically i am checking ranges to find which apic contains the interrupt line right? this seems kind of silly though
 		ustd_t true_cnt = 0;
 		for (ustd_t p = 0; p < iogod->count; ++p){
 			if (iogod->ckarray[p]){
