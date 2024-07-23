@@ -10,17 +10,19 @@ void processor_init(void){
 ustd_t UefiMain(void * image_handle, void * efisystab){
 	processor_init(void);
 	enable_A20(void);
-	efimap_returns data;
+	uefi_map_pages(1,efisystab);
 	void * boottab = get_bootservices_table(efisystab);
+	uefi_map_pages(1,boottab);
+	efimap_returns data;
 	get_uefi_memmap(image_handle,efisystab,&data,boottab);
-	char * initsys = setup_kernel(&data);
+	char * initsys = setup_kernel(&data);				//from here on out you can use the kernel memory allocation functions
 	POST_check(void);
 	setup_gdt(void);
 	setup_idt(void);
-	enact_IO_context(void);
+	enact_IO_context(drivers);
+	exit_bootservices(data->mapkey,boottab);
 	assign_interrupt_vectors(void);
 	sti(void);
-	exit_bootservices(data->mapkey*,boottab);
 	initialize_brothers(void);
 	Virtual_fs * vfs = get_vfs_object(void);
 	ustd_t root = vfs->mount(root_disk,root_partition_pos);
