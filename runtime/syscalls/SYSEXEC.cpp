@@ -2,8 +2,8 @@
 The format (BEFF, the Better Executable File Format) specifies a header, an identification string, a checksum and a binary, the header is the following:
 */
 Class Exec_header{
-	ushort_t heapsize;	//in 4096 byte pages
-	uchart_t tls_size;
+	uchar_t heapsize;	//in 4096 byte pages
+	uchar_t tls_size;
 	uchar_t stacksize;
 	ushort_t max_descriptors;
 	ulong_t expected_memory_usage;	//this is in gigabytes
@@ -24,6 +24,8 @@ if !(header->heapsize+header->tls_size+ header->stacksize+header->max_descriptor
 	Reading the header into a page, parsing it (evaluating the checksum really)
 	reserving the pages for the executable, making the process structure and initializing it,
 	allocating stuff into the process' pagetree, setting the main thread's ip and sp
+	mapping gdt and ldt into pagetree for tls and heap segments
+
 
 NOTE DANGER MOST IMPORTANT PLEASE READ IT FUCK!
 						remember that this heavily affects boot, setup_drivers()...
@@ -73,38 +75,39 @@ ulong_t exec(ustd_t findex){
 	};
 
 	Kingptr * ptr = get_pointer_object(void);
-	stream_init(kings.POINTERS);
+	ptr->stream_init(void);
 	process->workers = kptr->pool_alloc(1);
 	process->descs = kptr->pool_alloc(2);
 	__non_temporal ptr->calendary = 0;
 
 	Kingthread * ktrd = get_kingthread_object(void);
-	stream_init(kings.THREAD);
-	process->workers[0] = ktrd->pool_alloc(1);
+	ktrd->stream_init(void);
+	Thread * main_thread = ktrd->pool_alloc(1);
+	process->workers[0] = main_thread;
 	__non_temporal ktrd->calendar = 0;
 
 	Kingdescs * kdescs = get_kingdescriptors_object(void);
-	stream_init(kings.DESCRIPTORS);
+	kdescs->stream_init(void);
 	process->descs[0] = kdescs->pool_alloc(1);
 	process->descs[1] = kdescs->pool_alloc(1);
 	process->descs[0]->index = calling_process->descs[0]->index;	//same root context as the parent
 	process->descs[1]->index = DEVDESC;				//this is just /dev
 	kdescs->calendary = 0;
 
-	stream_init(kings.MEMORY);
-	//find the length of the pagetree with the expected memory usage and make the tree
-	ustd_t level_length = header->expected_memory_usage * 8 * 512;
+	mm->stream_init(void);
+	ustd_t level_length = header->expected_memory_usage * 8 * 512;	//find the length of the pagetree with the expected memory usage and make the tree
 	ustd_t pagetree_length = 512*8;
 	for (ustd_t u = 0; u < pag.SMALLPAGE; ++u){
 		page_length += level_length;
 		level_length *= 512;
 	}
-	ustd_t aligned_pagetree_length;
-	if (pagetree_lenght%4096){ aligned_pagetree_length = pagetree_length/4096+1;}	//losslessly rounding to pagesize
-	else{ aligned_pagetree_length = pagetree_length/4096;}
 
-	process->pagetree = malloc(aligned_pagetree_length,pag.SMALLPAGE);
+	//making the tree and piping it into Kingmem
+	process->pagetree = malloc(tosmallpage(pagetree_length),pag.SMALLPAGE);
 	mm->vmtree_lay(process->pagetree,header->expected_memory_usage);
+
+	void * treebackup = mm->vm_ram_table;
+	mm->vm_ram_table = process.pagetree;
 
 	//mapping the executable file into the pagetree
 	mm->vmtree_fetch(vfs->descriptions[findex].meta.length,source->mapped_pagetype);
@@ -115,21 +118,40 @@ ulong_t exec(ustd_t findex){
 		entry[g] = mm->memreq_template(pagetype,mode.MAP,cache.WRITEBACK,1);		//signing the pages as executable
 	}
 
-	void * treebackup = mm->vm_ram_table;
-	mm->vm_ram_table = process.pagetree;
 
-	entry = mm->vmtree_fetch(header->stacksize+1,pag.SMALLPAGE);
-	process->workers[0]->state.stack_ptr = stackp;
-	entry = mm->vmto_entry(entry,&pagetype) + (header->stacksize+1)*8;
-	for (ustd_t h = 0; h < header->stacksize; ++h){				//NOTE HARDENING
-		void * hold = mm->getphys_identity(1,pag.SMALLPAGE);
-		entry* = mm->memreq_template(pag.SMALLPAGE,mode.MAP,cache.WRITEBACK,0) | hold<<12;
-		entry -= 8;
-	}
-	entry* = 0;	//guard page
+	//mapping the gdt and ldt into the process' address space as unreadable and unwriteable
+	entry = mm->mem_map(mm->gdt->pool,pag.SMALLPAGE,tosmallpage(MAX16BIT),cache.WRITEBACK);	//idk
+	entry = vmto_entry(entry,&pagetype);
+	entry ^= 1<<1;
+
+	ustd_t maxthreads = (get_kingthread_object(void)->length/get_kingprocess_object(void)->length)*16;
+	auto * ldt_entry = mm->gdt->pool_alloc(1);
+	gdt_insert(64bit_sysseg_types::LDT,malloc(tosmallpage(maxthreads*16+4+1),pag.SMALLPAGE),ldt_entry);	//4+heap	NOTE boot hardening
+	entry = mm->mem_alloc(ldt_entry,pag.SMALLPAGE,tosmallpage(MAX16BIT),cache.writeback);
+	entry = vmto_entry(entry,&pagetype);
+	entry ^= 1<<1;
+
+	ustd_t ldt_index = (ldt_entry-mm->gdt->pool)/sizeof(mm->gdt->pool*);	//storing index into gdt
+	process->local_descriptor_table ={
+		.pool = ldt_entry;
+		.length = tosmallpage(maxthreads*16+4+1);
+		.gdt_index = idt_index;
+		.ckarray = malloc(2,pag.SMALLPAGE);
+	};
+	memset(process->local_descriptor_table->ckarray,1,6);		//the first 4 cant be used because segment selectors have the funi gdt vs ldt bit
+
+	//making a stack for the main thread
+	make_stack(mm,main_thread);
+
+	main_thread->state->fs = 4;		//heap segment
+	process-local_descriptor_table->pool[4] = data_segment_insert(header->heapsize,pag.SMALLPAGE);	//NOTE HARDENING
+	main_thread->state->gd = 5;		//thread local storage segment
+	process-local_descriptor_table->pool[5] = data_segment_insert(header->tls_size,pag.SMALLPAGE);
+
 
 	mm->vm_ram_table = treebackup;
 	__non_temporal mm->calendar = 0;
 
+	main_thread->type = thread_types::APPLICATION;
 	return process_index;
 }
