@@ -110,8 +110,6 @@ void load_state(Thread * thread);
 		uint64_t * userspace_stack = ringzero_stack->rsp;
 		ustd_t syscall_number = userspace_stack*;
 		if (thread->type == thread_types.DRIVER){
-			memcpy(userspace_stack-32,ringzero_stack,32);		//copying the interrupt stack on the stack that will be used by the syscall
-			set_stack_pointer(userspace_stack);			//giving the syscall the userspace stack
 			(sgod->pool[syscall_number])(&userspace_stack[1]);	//call, syscall will IRETQ back into the driver code
 		}
 		else{
