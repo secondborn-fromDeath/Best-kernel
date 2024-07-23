@@ -1,4 +1,7 @@
-void setup_kernel(efimap_returns * data, void * bootservices_table){
+using namespace OS_INTERRUPTS;
+
+//returns the string of the init system path
+char * setup_kernel(efimap_returns * data, void * bootservices_table){
 	efimap_descriptor * map = data->map;
 	ustd_t i;
 	ulong_t sizeof_memory = 0;
@@ -49,23 +52,15 @@ void setup_kernel(efimap_returns * data, void * bootservices_table){
 		.vm_ram_table = kerndata;
 		.phys_ram_table = map[i]->phys_start;
 		.paging = 4;
-		.sizeof_ramdisk = sizeof_memory-0xFFFFFFFF;
+		.sizeof_ramdisk = sizeof_memory-0xFFFFFFFF;	//NOTE needs porting to x86 32bit
 	};
 
 	ulong_t * stab = kerndata + (sizeof_memory>>30)+((sizeof_memory>>30)*512*512);	//skipping over to SMALLPAGES, see runtime/mem/core.h/vmtree_lay()
 	ustd_t page_counter = 0;
-	for (ustd_t u = 0; u < data->mapsize; ++u){					//reserving memory in the kernel maps
+	for (ustd_t u = 0; u < data->mapsize; ++u){	//reserving memory that is not for the kernel's userspace
 		if !(map[u]->type & MOST_RELIABLE){
 			mm->manipulate_memory(map[u]->pages_number,pag.SMALLPAGE,commands.SET);
 		}
-		//skipped forward, now incrasing and assigning with memreq_template	i am using the same config as uefi for caching since it is different than the x64 defualt (which would throw a GPE#)
-		ustd_t cacheability = 0;
-		if (map[u]->memtype & cache.WRITEBACK){;}
-		else if (map[u]->memtype & cache.STRONG_UNCACHEABLE){ cacheability = cache.STRONG_UNCACHEABLE;}
-		else if (map[u]->memtype & cache.WRITE_COMBINING){ cacheability = cache.WRITE_COMBINING;}
-		else if (map[u]->memtype & cache.WRITE_THROUGH){ cacheability = cache.WRITE_THROUGH;}
-		else if (map[u]->memtype & cache.WRITE_PROTECT){ cacheability = cache.WRITE_PROTECT;}
-
 		for (ustd_t l = 0; l < map[u]->pages_number; ++l){
 			stab[page_counter] = memreq_template(pag.SMALLPAGE,mode.MAP,cacheability,0);	//DANGER i think 0 is no exec right???
 			++page_counter;
@@ -75,12 +70,15 @@ void setup_kernel(efimap_returns * data, void * bootservices_table){
 	ProcessorGod * processorsgod = acpi + sizeof(ACPI_driver);			//this is the culprit
 	IOapicGod * ioapic_god = processorsgod + sizeof(ProcessorGod);
 
+	acpi->build_ioapic_and_processors_array(ProcessorsGod->pool, IOapicGod->pool);
+
 	Kingprocess * processking = ioapic_god + sizeof(IOapicGod);
 	Kingthread * threadking = processking + sizeof(King);
 	Kingdescriptor * descriptorsking = threadking + sizeof(King);
 	Virtual_fs * vfs = descriptorsking + sizeof(King);
 	Kingptr * pointersking = vfs + sizeof(King);
 	Kshm * shm_king = pointersking + sizeof(King);
+	SyscallsGod * sgod = runtimemodking + sizeof(King);
 	DriversGod * drivgod = shm_king + sizeof(King);
 	DriverProcessGod * runtimemodking = drivgod + sizeof(King);
 
@@ -99,7 +97,7 @@ void setup_kernel(efimap_returns * data, void * bootservices_table){
 	ustd_t val;
 
 	#define INITIALIZE_POOL_BASED_ON_CONFIG(x){	\
-	val = atoi_special(data->file,2,&something,&offset);	\
+	val = atoi_special(data->file,2,&something,&offset);	\	//NOTE HARDENING
 	x->length = val/sizeof(x->pool*);	\
 	x->pool = malloc(tosmallpage(val),pag.SMALLPAGE);	\
 	}
@@ -108,10 +106,17 @@ void setup_kernel(efimap_returns * data, void * bootservices_table){
 	INITIALIZE_POOL_BASED_ON_CONFIG(threadking);
 	INITIALIZE_POOL_BASED_ON_CONFIG(vfs);
 
-	//TODO figure something out for kingptr and kingshm, throw in sizeof_memory too......	drivergods are going to work without a startup, doesnt really matter
+	kptr->pool = malloc(32,pag.MIDPAGE);		//pretty much "whatever" for now lol		NOTE NOTE NOTE NOTE LOOK HERE PLEASE
+	kshm->pool = malloc(32,pag.MIDPAGE);
 
+	constexpr for (ustd_t i = 0; i < syscalls::NUMBER; ++i){
+		sgod->pool[i] = syscalls[i];
+	}
 
-	acpi->build_ioapic_and_processors_array(ProcessorsGod->pool, IOapicGod->pool);
 
 	set_pagetree(kerndata);
+
+	for (1; (config[offset] != '\n') && (config[offset] != '#'); ++offset);
+	config[offset] = 0;
+	return config+offset;
 }
