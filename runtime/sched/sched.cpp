@@ -1,14 +1,17 @@
-extern get_processor_pointer(void);
-
 void store_state(Thread * thread);
 void load_state(Thread * thread);
 
 	void run_ringthree(auto * func){
 		schedule_timed_interrupt(SCHEDULER_INTERRUPT_TIMER,EIGHT);	//undefined and random value, see drivers/interrupts.cpp
-		__asm__(
-		"MOV	%%rax,32(%%rsp)\n\t"	//exhanging the return address with func
-		"IRETQ\n\t"
-		::"r"(func):);
+		uint64_t * sp = get_stack_pointer(void);
+		sp[4] = func;
+		set_ipi_mode(get_selfipi_mask(void));
+		set_task_priority(0);
+		iret(void);
+	}
+	void run_thread(Thread * thread){
+		set_thread_object(thread);
+		run_ringthree(thread->state->instruction_pointer);
 	}
 	void getnext_thread(Processor * processor){
 		ThreadsKing * tking = get_threadsking_object(void);
@@ -20,7 +23,7 @@ void load_state(Thread * thread);
 				--tking->pool[i]->parent->numberof_children;
 				if !(tking->pool[i]->parent->numberof_children){
 					Processking * processking = get_processking_object(void);
-					processking->pool_free(tking->pool[i]->parent,1);
+					PKILL(tking->pool[i]->parent,1);	//gets all of our memory back and frees the spot in the process pool
 				}
 				tking->pool_free(&tking[i],1);		//DANGER not zeroing the thread structures causes problems in the signal handlers
 			}
@@ -34,22 +37,19 @@ void load_state(Thread * thread);
 		}
 		__non_temporal tking->calendar = 0;
 		processor->current_thread = -1;
-		__asm__("HLT");		//brother will wake it up.
+		halt(void);		//brother will wake it up.
 	}
-
+	//NOTE you likely need functions for the process' signals beyond the kill that is checked above
 	ustd_t signal_handler(Thread * thread, ustd_t signal){
 		switch (signal){
 			case SIGKILL:{	memset(thread,0,sizeof(Thread)); return 1;}
-			case SIGTERM:{	if (thread->sigmask & SIGTERM){ run_ringthree(thread->sighandlers[SIGTERM]);} return 1;}
+			case SIGTERM:{	if (thread->sigmask & SIGTERM){ run_ringthree(thread->sighandlers[SIGTERM]);} TKILL(thread);}
 			case SIGSTOP:{	return 1;}
 			case SIGCONT:{	thread->sigset |= SIGSTOP; thread->sigset ^= SIGSTOP; return 0;}
-			case SIGOFLOW:{	if (thread->sigmask & SIGOFLOW){ run_ringthree(thread->sighandlers[SIGOFLOW]);} return 0;}
-			case SIGUFLOW:{	if (thread->sigmask & SIGUFLOW){ run_ringthree(thread->sighandlers[SIGUFLOW]);} return 0;}
-			case SIGFPE:{	if (thread->sigmask & SIGFPE){ run_ringthree(thread->sighandlers[SIGFPE]);} return 0;}
 			//TODO		case SIGIO:{	thread->sigset |= SIGPOLLING; thread->sigset ^= SIGPOLLING; return 0;}
 			default: {
 				if (thread->sighandlers[signals]){
-					run_ringthree(thread->sighandlers[signal]));
+					thread->state->instruction_pointer = thread->sighandlers[signal];
 				}
 				return 0;
 			}
@@ -62,10 +62,16 @@ void load_state(Thread * thread);
 			}
 		}
 	}
-	void routine(void){
-		State prior;
-		store_state(prior);	//saving state on the userspace stack
+	/*
+	Processors taking a rest is done automatically but there is no way to wake processors back up aside from letting IO do it for us so...*/
+	void evalutate_workload(void){
+		//something something account for the skewing of the threads/processors number with the acpi health methods
+		//something something drop the processor's power and let execution be slower as long as all threads get executed
+		//if we are being overwhelmed BLOOD_LIBEL something with a lot of threads
 
+		process->executed_threads = 0;
+	}
+	void routine(void){
 		Kontrol * ctrl = get_kontrol_object(void);
 		Kingmem * mm = get_kingmem_object(void);
 		Virtual_fs * vfs = get_vfs_object(void);
@@ -76,30 +82,50 @@ void load_state(Thread * thread);
 			vfs->evictions_cycle(void);
 		}
 
-		do{
-			getnext_thread(processor);
-		}while(processor->current_thread != -1);
+		if (executed_threads > ctrl->maxthreads/get_processors_number(void*1)){
+			evalluate_workload(void);
+		}
+
+		getnext_thread(processor);
 		++processor->executed_threads;
 
-		load_state(get_current_thread(void));	//NOTE this the get_process_object MUST NOT be merged
-		run_ringthree(tking->pool[processor->current_thread]->state->instruction_pointer);
+		run_thread(tking->pool[processor->current_thread);
 	}
-	/*
-	Because i dont have compiler-aid the arguments are passed on the userspace stack, reminder of the C calling convention for acd*/
-	void syscall(void){
-		store_state(get_thread_object(void));
-		__asm__ volatile(
-		"MOVq	8(%%rsp),%%rdx\n\t"			//reminder, from the bottom up: ss,rsp,rflags,cs,rip
-		"MOVq	(%%rdx),%%rcx\n\t"			//getting syscall number from userspace stack
-		"MOVq	(%%rax,%%rcx),%%rax\n\t"		//function pointer into rax
-		"ADDq	$8,%%rdx\n\t"				//passing the userspace stack as argument
-		"PUSHq	%%rdx\n\t"
-		"CALL	%%rax"					//calling the function pointer from ringzero
-		::"r"((get_syscallsgod_object)->a):);
 
-		routine(void);
+
+	/*
+	Tomfoolery.
+	The interrupt for syscalls is divide by 0 fault
+	*/
+	struct interrupt_stack{
+		uint64_t * errcode,rip,cs,rflags,rsp,ss;
+	};
+	void syscall(void){
+		set_task_priority(15);
+		SyscallsGod * sgod = get_syscalls_object(void);
+		Thread * thread = get_thread_object(void);
+
+		interrupt_stack * ringzero_stack = get_stack_pointer(void);
+		void * userspace_instruction = ringzero_stack->rip;
+		uint64_t * userspace_stack = ringzero_stack->rsp;
+		ustd_t syscall_number = userspace_stack*;
+		if (thread->type == thread_types.DRIVER){
+			memcpy(userspace_stack-32,ringzero_stack,32);		//copying the interrupt stack on the stack that will be used by the syscall
+			set_stack_pointer(userspace_stack);			//giving the syscall the userspace stack
+			(sgod->pool[syscall_number])(&userspace_stack[1]);	//call, syscall will IRETQ back into the driver code
+		}
+		else{
+			(sgod->pool[syscall_number])(&userspace_stack[1]);	//syscall uses the ringzero stack and will jump to routine
+		}
+	}
+	void sysret(void){
+		if (get_thread_object(void)->type == thread_types.DRIVER){
+			iret(void);
+		}
+		else{ routine(void);}
 	}
 	void timed_out(void){
+		set_task_priority(15);
 		store_state(get_thread_object(void));
 		routine(void);
 	}
