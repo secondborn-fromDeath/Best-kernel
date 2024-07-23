@@ -27,16 +27,15 @@ page 858 of the i486 manual
 	*/
 
 Class IOapic{
-	void * mmio;
-	ustd_t pinsnum;
+	void * pointer;
+	ustd_t linesnum;
+	ustd_t global_base;
 };
-
 	//you can get the information on the ir pins of devices from pci
-	ustd_t assign_vector(IOapic * info, ustd_t rel_pin, uchar_t vector){
-		if !(info->pinsnum > rel_pin){ return 1;}
+	ustd_t assign_vector(IOapic * info, ustd_t rel_line, uchar_t vector){
 		ustd_t * ioapic_cfg = info->mmio;		//the "default" is FEC0000.
 		//writing to regsel the pin number
-		ioapic_cfg[0] = 16+rel_pin;
+		ioapic_cfg[0] = 16+rel_line;
 		//writing with preserve to win
 		ustd_t nyu = ioapic_cfg[1];
 		(uchar_t)nyu = vector;
@@ -44,14 +43,14 @@ Class IOapic{
 		return 0;
 	}
 	ustd_t get_vector(IOapic * info, ustd_t rel_pin){
-		if !(info->pinsnum > rel_pin){ return 1;}
+		if !(info->linesnum > rel_pin){ return 1;}
 		ustd_t * ioapic_cfg = info->mmio;		//FEC00000 + 4096*ioapic_id
 		ioapic_cfg[0] = 16+rel_pin;
 		ustd_t nyu = ioapic_cfg[1];
 		return (char)nyu;
 	}
 	ustd_t mask_pin(IOapic * info, ustd_t rel_pin){
-		if !(info->pinsnum > rel_pin){ return 1;}
+		if !(info->linesnum > rel_pin){ return 1;}
 		ustd_t * ioapic_cfg = info->mmio;
 		//pinnum into regsel
 		ioapic_cfg[0] = rel_pin;
@@ -62,7 +61,7 @@ Class IOapic{
 		return 0;
 	}
 	ustd_t unmask_pin(IOapic * info, ustd_t rel_pin){
-		if !(info->pinsnum > rel_pin){ return 1;}
+		if !(info->linesnum > rel_pin){ return 1;}
 		ustd_t * ioapic_cfg = info->mmio;
 		//pinnum into regsel
 		ioapic_cfg[0] = rel_pin;
@@ -75,7 +74,7 @@ Class IOapic{
 	enum delivmod{ FIXED,LOWPRIO,RESONE,RESTWO,NMI,RESET,RESTHREE,EXTINT};
 	ustd_t set_delivery_mode(IOapic * info, ustd_t rel_pin, ustd_t mode){
 		if (mode > delivmod.EXTINT){ return 1;}
-		if !(info->pinsnum > rel_pin){ return 1;}
+		if !(info->linesnum > rel_pin){ return 1;}
 		//you know the drill
 		ustd_t * ioapic_cfg = info->mmio;
 		ioapic_cfg[0] = 16+rel_pin;
@@ -85,7 +84,7 @@ Class IOapic{
 		return 0;
 	}
 	ustd_t get_delivery_mode(IOapic * info, ustd_t rel_pin){
-		if !(info->pinsnum > rel_pin){ return 32;}
+		if !(info->linesnum > rel_pin){ return 32;}
 		ustd_t * ioapic_cfg = info->mmio;
 		ioapic_cfg[0] = 16+rel_pin;
 		ustd_t nyu = ioapic_cfg[1];
@@ -99,7 +98,7 @@ Class IOapic{
 	enum trigmode{ EDGE,LEVEL};
 	ustd_t set_trigger_mode(IOapic * info, ustd_t rel_pin, ustd_t trigger_mode){
 		if (trigger_mode > trigmode.LEVEL){ return 1;}
-		if !(info->pinsnum > rel_pin){ return 1;}
+		if !(info->linesnum > rel_pin){ return 1;}
 		ustd_t * ioapic_cfg = info->mmio;
 		ioapic_cfg[0] = 16+rel_pin;
 		ustd_t nyu = ioapic_cfg[1];
@@ -107,42 +106,48 @@ Class IOapic{
 	}
 	ustd_t get_trigger_mode(IOapic * info, ustd_t rel_pin){
 		if (trigger_mode > trigmode.LEVEL){ return 1;}
-		if !(info->pinsnum > rel_pin){ return 1;}
+		if !(info->linesnum > rel_pin){ return 1;}
 		ustd_t * ioapic_cfg = info->mmio;
 		ioapic_cfg[0] = 16+rel_pin;
 		ustd_t nyu = ioapic_cfg[1];
 		return nyu<<15>>31;
 	}
-
-
-
+	ustd_t get_max_redir_entries(ustd_t * ioapic){
+		ioapic[0] = 0;
+		return ioapic[1]<<8>>8;				//id 0:23
+	}
 	/*
 		Local apic portion of things:
 
 	Disclaimer that this only works on 64bit processors
 	*/
+	ustd_t * get_lapic_pointer(void){
+		Kontrol * ctrl = get_kontrol_object(void);
+		return ctrl->lapic_override;
+	}
+
 	ustd_t set_task_priority(ustd_t prio){
 		if (prio > 15){ return 1;}
-		((ustd_t *)0xFEE00080)* = prio;
+		get_lapic_pointer(void)[0x80/4] = prio;
 		return 0;
 	}
 	//no need for get
 	void signal_EOI(void){
-		((ustd_t *)0xFEE000B0)* = 1;
+		get_lapic_pointer(void)[0xB0/4] = 1;
 	}
 	ustd_t set_spurious(uchar_t newvec){
-		((ustd_t *)0xFEE000F0)* = (ustd_t)newvec;
+		get_lapic_pointer(void)[0xF0/4] = (ustd_t)newvec;
 		return 0;
 	}
 	ustd_t get_spurious(void){
-		return ((ustd_t *)0xFEE000F0)*;
+		return get_lapic_pointer(void)[0xF0/4];
 	}
 	/*
 	You use command reg and read from remote read reg
 	destination field is the *local* unit and the vector is the register
 	*/
 	ustd_t remote_read(Kontrol * status, ustd_t remote_id, ustd_t regnum){
-		ustd_t * lapic = 0xFEE00000;
+		ustd_t * lapic = get_lapic_pointer(void);
 		lapic[0x310/4] = brother_id<<24;
 		ustd_t interrupt_mask = get_targetipi_mask(void) | regnum;
 		((char *)lapic)[0x300/8] = regnum;
@@ -153,7 +158,8 @@ Class IOapic{
 	*/
 	enum divider{ ONE,TWO,FOUR,EIGHT,SIXTEEN};
 	void schedule_timed_interrupt(ustd_t ticks, ustd_t divider){	//reminder you dont need a time conversion lol
-		ustd_t * lapic = 0xFEE00000;
+		ustd_t * lapic = get_lapic_pointer(void);
+
 		//writing to initial count
 		lapic[0x380/4] = ticks;
 		ustd_t pipe = 0;
@@ -177,32 +183,51 @@ Class IOapic{
 	ustd_t get_exselfipi_mask(void){
 		return 1<<14 | 1<<15 | 3<<18;		//all excluding self
 	}
-	/*
-	Puts all other processors to HLT
-	*/
-	void brothers_sleep(void){
-		ustd_t interrupt_mask = get_exselfipi_mask(void);
-		((ustd_t *)0xFEE0300)* = interrupt_mask | ints.SLEEP;   //sent
+	void set_ipi_mode(ustd_t mask){
+		ushort_t * lapic = get_lapic_pointer(void);
+		lapic[0x302/2] = mask>>16;		//writing to the high word
+		((char *)lapic)[0x301] = mask<<16>>24;	//writing to the second byte		low byte causes IPI to be sent...
 	}
-	void brothers_wake(void){
-		ustd_t interrupt_mask = get_exselfipi_mask(void);
-		((ustd_t *)0xFEE0300)* = interrupt_mask | ints.WAKE;
+
+	void poke_brother(ustd_t brother_id, uchar_t action){
+		ustd_t * lapic = get_lapic_pointer(void);
+		lapic[0x310/4] = brother_id<<56;
+		lapic[0x300/4] = get_targetipi_mask(void) | action;
 	}
-	void wake_brother(ustd_t brother_id){
-		((ustd_t *)0xFEE0310)* = brother_id<<56;
-		ustd_t interrupt_mask = get_targetipi_mask(void);
-		((ustd_t *)0xFEE0300)* = interrupt_mask | ints.SLEEP;
+	#define wake_brother(brother_id){ poke_brother(brother_id,ints.WAKE)}
+	#define sleep_brother(brother_id){ poke_brother(brother_id,ints.SLEEP)}
+
+	void brothers_poke(uchar_t action){
+		ustd_t * lapic = get_lapic_pointer(void);
+		lapic[0x300/4] = get_exselfipi_mask(void) | action;
 	}
-	void sleep_brother(ustd_t processor_id){
-		((ustd_t *)0xFEE0310)* = brother_id<<56;
-		ustd_t interrupt_mask = get_targetipi_mask(void);
-		((ustd_t *)0xFEE0300)* = interrupt_mask | ints.WAKE;
+	#define wake_brothers(void){ brothers_poke(ints.WAKE)}
+	#define sleep_brother(void){ brothers_poke(ints.SLEEP)}
+
+	void family_poke(ustd_t interrupt){
+		ustd_t * lapic = get_lapic_pointer(void);
+		lapic[0x300/4] = get_allipi_mask(void) | interrupt;
 	}
-	void nap(void){
-		((ustd_t *)0xFEE0310)* = brother_id<<56;
-		ustd_t interrupt_mask = get_selfipi_mask(void);
-		((ustd_t *)0xFEE0300)* = interrupt_mask | ints.SLEEP;
+
+	void INT(ustd_t num){				//because in ringzero the ipi setting is undefined while in userspace it is self
+		set_ipi_mode(get_selfipi_mask(void));
+		__asm__("INT %%al\n\t"::"r"(num):);
 	}
-	//these are the routines
-        void memreq_down_handler(void){__asm__("HLT\n\t");}
-        void memreq_up_handler(void){__asm__("add $24,%%rsp\n\t""iret\n\t");}   //ss,cs,ip,sp,rflags	skipping the new stack and returning to the task we procrastinated
+
+	void iret(void){
+		__asm__("IRETQ\n\t");
+	}
+	void halt(void){
+		set_task_priority(0);			//we want the hardware to help us out with not overworking one processor
+		__asm__ volatile(
+		"MOVq	(%%rip),%%rax\n\t"
+		"MOVq	%%rax,%%cr12\n\t"
+		"HLT\n\t"
+		);
+	}
+	void wake(void){
+		__asm__ volatile(
+		"MOVq	%%cr12,%%rax\n\t"
+		"JMP	%%rax\n\t"
+		);
+	}
