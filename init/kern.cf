@@ -1,0 +1,7 @@
+Same rules as the drivers file, but in addition the values advertised here are to be placed in a specific order
+###############################################################################################################
+16#		maximum processes
+16#		mx threads per process
+128#		mx open descriptors per process
+1024#		recursively mx files loadable in the virtual filesystem at once, if you need precision overshoot
+/initsys.exe#	the init system's path
