@@ -30,29 +30,41 @@ void * get_bootservices_table(void * efisystab){		//called in C conv
 	return h*;
 }
 
-
-void EFIAPI get_memmap(efimap_returns * returns, ustd_t * bootservices_table){
-	auto * uefi_get_memory_map = (bootservices_table+sizeof(efiheader))[32/4];
+//in 4096 byte pages
+void * EFIAPI uefi_allocate_pages(ustd_t pages_number, ulong_t * bootservices_table){
+	auto * allocate_pages = (bootservices_table+sizeof(efiheader))[16/8]
+	void * ret;
+	(allocate_pages)(0,0,pages_number,&ret);	//allocate_any, reserve
+	return ret;
+}
+void * EFIAPI uefi_map_pages(ustd_t pages_number, void * request, ulong_t * bootservices_table){
+	auto * allocate_pages = (bootservices_table+sizeof(efiheader))[16/8]
+	void * ret;
+	(allocate_pages)(2,0,pages_number,&ret);	//allocate_address, reserve			DANGER the reserved type
+	return ret;
+}
+void EFIAPI get_memmap(efimap_returns * returns, ulong_t * bootservices_table){
+	auto * uefi_get_memory_map = (bootservices_table+sizeof(efiheader))[32/8];
 	returns->mapsize = 512*512*4096;
-	returns->map = get_free_identity(1,MIDPAGE);		//big enough that it never fails
+	returns->map = uefi_allocate_pages(512);	//big enough that it never fails
 	(uefi_get_memory_map)(&returns->mapsize,&returns->map,&returns->mapkey,&returns->descriptor_size,&returns->descriptor_version);
 	returns->mapsize /= returns->descriptor_size;
 }
-void EFIAPI exit_boot_services(void * image_handle, uint32_t mapkey, ustd_t * bootservices_table){
-	auto * uefi_exbootserv = (bootservices_table+sizeof(efiheader))[208/4];
+void EFIAPI exit_boot_services(void * image_handle, uint32_t mapkey, ulong_t * bootservices_table){
+	auto * uefi_exbootserv = (bootservices_table+sizeof(efiheader))[208/8];
 	(uefi_exbootserv)(imagehandle,mapkey);
 }
 struct loadfile_returns{
 	char * file;
 	ulong_t length;
 };
-char * EFIAPI loadfile(uchar_t * name, ustd_t * bootservices_table, loadfile_returns * returns){
-	auto * loadfile = (bootservices_table+sizeof(efiheader))[176/4];
+char * EFIAPI loadfile(uchar_t * name, ulong_t * bootservices_table, loadfile_returns * returns){
+	auto * loadfile = (bootservices_table+sizeof(efiheader))[176/8];
 	uint8_t policy = 0;
 	uint32_t sourcesize = 512*512*4096;
 	void * rethandle;
 	ustd_t pages = 1;
-	void * pointer = malloc(1,pag.SMALLPAGE);
+	void * pointer = uefi_allocate_pages(1);
 	//NOTE HARDENING
 	while ((loadfile)(policy,imagehandle,name,pointer,sourcesize,&rethandle) != EFI_SUCCESS){
 		++pages;
