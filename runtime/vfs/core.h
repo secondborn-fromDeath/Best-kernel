@@ -36,12 +36,14 @@ Class Virtual_fs : King{
 		for (i = 0; i < lenght; ++i){
 			newfren->shared_contents[i] = contents+i*multi;
 		}
+		newfren->mapped_pagetype = pagetype;
 		newfren->meta.length = (newfren->shared_contents[i] - contents)*(multi/4096);
 		return newfren;
 	}
 
 	//loads a page of a file on disk if it is even needed
 	void load_page(DisksGod * dking, Storage * file, ustd_t page){
+		if (page > file->length){ return 1;}
 		if !(file->shared_contents[page]){
 			file->shared_contents[page] = malloc(1,file->mapped_pagetype);	//NOTE HARDENING
 			dking->read(file->disk,file->diskpos+page*get_multi_from_pagetype(file->mapped_pagetype),file->shared_contents[page],1,file->mapped_pagetype);
@@ -107,7 +109,7 @@ Class Virtual_fs : King{
 				return description_alloc(&temp);
 			}
 		}
-		return -1;
+		return stand[0];
 	}
 
 	//reading files directly from disk, if you dont like it you can go and call mmap
@@ -181,7 +183,7 @@ Class meta{
 	ulong_t namelen;
 	ustd_t type;
 	ustd_t mode;
-	ulong_t length;		//length on disk		in smallpages i am assuming???
+	ulong_t length;		//length on disk in smallpages
 	ustd_t disk;
 	ondisk_t diskpos;
 };
@@ -224,9 +226,10 @@ Class File{
 					union{
 						//type==STORAGE
 						struct{
-							ustd_t openers;
-							ustd_t length;		//in pages, in memory		idk the point of this???
+							ustd_t mapped_pagetype;
+							ustd_t length;		//used with mapped_pagetype
 							uchar_t * listeners;	//listeners are per-page and not per-file
+							void ** shared_contents;
 							ustd_t pending_sync;
 						};
 
