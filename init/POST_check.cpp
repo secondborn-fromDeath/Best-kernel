@@ -9,10 +9,6 @@ void POST_check(void){
 	::"r"(a):);
 
 	if !(a & 4){
-		Kontrol * ctrl = get_kontrol_object(void);
-		__asm__(
-		"MOV	%%eax,%%edx\n\t"
-		"OUT	%%ax,%%dx\n\t"
-		::"r"(ctrl->shutdown_port));
+		shutdown(void);
 	}
 }
