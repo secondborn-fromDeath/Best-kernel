@@ -39,9 +39,9 @@ Class Hash{
 	}
 	auto * pool_realloc(void * section, ustd_t prevlen, ustd_t newlen, ustd_t peasant_length){
 		Kshm * shm; get_shm_object(shm);
-		ustd_t processor_id = shm->stream_init(void);
+		shm->stream_init(void);
 		void * backup = shm->pool_alloc(sizeof(peasant_length)*prevlen/4096+1);
-		__non_temporal shm->calendar[processor_id] = 0;		//freeing early because safe pipe
+		__non_temporal shm->calendar = 0;		//freeing early because safe pipe
 		memcpy(backup,section,sizeof(peasant_length)*prevlen);
 		this.pool_free(section,prevlen);
 		void * ret = pool_alloc(k,newlen);
