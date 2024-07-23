@@ -20,5 +20,6 @@ ustd_t modinsert(ustd_t drivindex){
 	__non_temporal drivgod->calendar = 0;
 	ptr* = driv;
 
+	driv->runtime->workers[0]->type = thread_types::DRIVER;
 	run_ringthree(driv->runtime->children[0]);
 }
