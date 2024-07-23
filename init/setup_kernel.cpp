@@ -1,7 +1,13 @@
 using namespace OS_INTERRUPTS;
 
+void set_pagetree(void * pagetree){
+	__asm__ volatile(
+	"MOVq	%%rax,%%cr3\n\t"
+	"JMP	+0\n\t"
+	::"r"(pagetree):);
+}
 //returns the string of the init system path
-char * setup_kernel(efimap_returns * data, void * bootservices_table){
+char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservices_table){
 	efimap_descriptor * map = data->map;
 	ustd_t i;
 	ulong_t sizeof_memory = 0;
@@ -11,15 +17,7 @@ char * setup_kernel(efimap_returns * data, void * bootservices_table){
 	ustd_t needfull += sizeof(ProcessorsGod)+sizeof(IOapicGod)+sizeof(Kontrol)+sizeof(Kingmem)+sizeof(King)*8;		//pagetree plus key data
 	tosmallpage(needfull);
 
-	for (i = 0;  i < data->mapsize; ++i){
-		if !(map[i]->pages_number < need){
-			break;
-		}
-	}
-	if (map[i]->pages_number < need){
-		//uefi turn machine off
-	}
-	ulong_t * kerndata = map[i]->phys_start;
+	ulong_t * kerndata = uefi_allocate_pages(needfull);
 	__asm__(
 	"MOV	%%rax,%%cr6\n\t"	//this unused control register is used as the base for all of the get_XXX functions...
 	"JMP	+0\n\t"
@@ -28,9 +26,12 @@ char * setup_kernel(efimap_returns * data, void * bootservices_table){
 	Kingmem *pOOP = NULL;
 	pOOP->vmtree_lay(kerndata,sizeof_memory>>30);
 
+	set_pagetree(kerndata);
+
 
 	ACPI_driver * acpi = kerndata+needtree;
-	acpi->env_init(void);
+	acpi->RSDP = efisystab[72/8];
+	acpi->env_init(void);		//NOTE DANGER this is the "configuration tables" entry, acpi spec says that the rsdp should be somewhere in the efisystab but it fucking isnt
 
 	Kontrol * ctrl = kerndata+needtree;
 	ctrl* ={
@@ -38,21 +39,12 @@ char * setup_kernel(efimap_returns * data, void * bootservices_table){
 		.shutdown_port = acpi->get_shutdown_port(void);
 	};
 
-	for (1;  i < data->mapsize*; ++i){
-		if !(map[i]->pages_number < sizeof_memory/8){
-			break;
-		}
-	}
-	if (map[i]->pages_number < sizeof_memory/8){
-		//uefi turn machine off
-	}
-
 	Kingmem mm = ctrl+sizeof(Kontrol);
 	mm* ={
 		.vm_ram_table = kerndata;
 		.phys_ram_table = map[i]->phys_start;
 		.paging = 4;
-		.sizeof_ramdisk = sizeof_memory-0xFFFFFFFF;	//NOTE needs porting to x86 32bit
+		.sizeof_ramdisk = sizeof_memory-0x100000000;	//NOTE needs porting to x86 32bit
 	};
 
 	ulong_t * stab = kerndata + (sizeof_memory>>30)+((sizeof_memory>>30)*512*512);	//skipping over to SMALLPAGES, see runtime/mem/core.h/vmtree_lay()
