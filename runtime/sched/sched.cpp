@@ -109,12 +109,9 @@ void load_state(Thread * thread);
 		void * userspace_instruction = ringzero_stack->rip;
 		uint64_t * userspace_stack = ringzero_stack->rsp;
 		ustd_t syscall_number = userspace_stack*;
-		if (thread->type == thread_types.DRIVER){
-			(sgod->pool[syscall_number])(&userspace_stack[1]);	//call, syscall will IRETQ back into the driver code
-		}
-		else{
-			(sgod->pool[syscall_number])(&userspace_stack[1]);	//syscall uses the ringzero stack and will jump to routine
-		}
+		memcpy(userspace_stack-40,ringzero_stack,40);
+		set_stack_pointer(userspace_stack);			//DANGER task linking
+		(sgod->pool[syscall_number])(void);			//if type==DRIVER syscall returns with iret into the same stack, otherwise jumps to routine
 	}
 	void sysret(void){
 		if (get_thread_object(void)->type == thread_types.DRIVER){
