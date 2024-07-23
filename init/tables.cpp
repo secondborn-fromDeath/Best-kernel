@@ -1,8 +1,7 @@
 using namespace OS_INTERRUPTS;
 
-void * get_gdt(void);
-void * get_idt(void);
-
+void * set_idt(void);
+void * set_gdt(void);
 
 
 namespace gate_types{
@@ -13,8 +12,8 @@ void Idescriptor_insert(uint64_t * ins, uint64_t * target, ustd_t gdt_segsel, us
 	target[0] = ((ins*)<<48>>48)|((ins*)>>16<<48)|gdt_segsel<<16|tss_entry<<32|gate_type<<40|privilege_level<<45|<<47;		//no need for comments
 	target[1] = ((ins*))>>32<<32;													//top of the pointer
 }
-void setup_idt(void){
-	uint64_t * target = get_idt(void);
+void * setup_idt(void){
+	uint64_t * idt = malloc(tosmallpage(MAX16BIT));
 	uint64_t * kernelcode = get_kernelcode_base(void);
 
 	using namespace gate_types;
@@ -33,6 +32,7 @@ void setup_idt(void){
 		target* = NULL;				//present bit is not set...
 		target += 8;
 	}
+	set_idt(idt);
 }
 
 
@@ -70,12 +70,10 @@ void build_tss(uint32_t * tss){
 		iopb[j] = MAX16BIT;				//setting all ports to supervisor only
 	}
 }
-void final_setup_gdt(void){
+void setup_gdt(void){
 	Kingmem * mm = get_kingmem_object(void);
-	uint64_t * gdt = get_gdt(void);
+	uint64_t * gdt = malloc(tosmallpage(MAX16BIT));
 	mm->gdt->pool = gdt;
-
-	setup_idt(void);
 
 	gdt[0] = NULL;					//this is becase of the size incongruence with the length field (-1)
 	auto * target = &gdt[1];
