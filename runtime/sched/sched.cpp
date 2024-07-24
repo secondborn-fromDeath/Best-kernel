@@ -2,11 +2,15 @@ void store_state(Thread * thread);
 void load_state(Thread * thread);
 
 	void run_ringthree(auto * func){
+		Thread * thread = get_thread_object(void);
+		set_gdt(thread->parent->gdt_linear);
+		set_ldt(thread->parent->local_descriptor_table->pool);
 		schedule_timed_interrupt(SCHEDULER_INTERRUPT_TIMER,EIGHT);	//undefined and random value, see drivers/interrupts.cpp
 		uint64_t * sp = get_stack_pointer(void);
 		sp[4] = func;
 		set_ipi_mode(get_selfipi_mask(void));
 		set_task_priority(0);
+		load_state(thread);
 		iret(void);
 	}
 	void run_thread(Thread * thread){
@@ -93,6 +97,11 @@ void load_state(Thread * thread);
 	}
 
 
+	void enter_ringzero(void){
+		set_task_priority(15);
+		store_state(get_thread_object(void));
+		set_gdt(get_kontrol_object(void)->gdt);
+	}
 	/*
 	Tomfoolery.
 	The interrupt for syscalls is divide by 0 fault
@@ -101,9 +110,8 @@ void load_state(Thread * thread);
 		uint64_t * errcode,rip,cs,rflags,rsp,ss;
 	};
 	void syscall(void){
-		set_task_priority(15);
+		enter_ringzero(void);
 		SyscallsGod * sgod = get_syscalls_object(void);
-		Thread * thread = get_thread_object(void);
 
 		interrupt_stack * ringzero_stack = get_stack_pointer(void);
 		void * userspace_instruction = ringzero_stack->rip;
@@ -120,7 +128,6 @@ void load_state(Thread * thread);
 		else{ routine(void);}
 	}
 	void timed_out(void){
-		set_task_priority(15);
-		store_state(get_thread_object(void));
+		enter_ringzero(void);
 		routine(void);
 	}
