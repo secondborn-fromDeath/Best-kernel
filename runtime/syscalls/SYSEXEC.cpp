@@ -122,19 +122,20 @@ ulong_t exec(ustd_t findex){
 	//mapping the gdt and ldt into the process' address space as unreadable and unwriteable
 	entry = mm->mem_map(mm->gdt->pool,pag.SMALLPAGE,tosmallpage(MAX16BIT),cache.WRITEBACK);	//idk
 	entry = vmto_entry(entry,&pagetype);
-	entry ^= 1<<1;
+	entry* ^= 1<<1;
+	process->gdt_linear = entry*;
 
 	ustd_t maxthreads = (get_kingthread_object(void)->length/get_kingprocess_object(void)->length)*16;
 	auto * ldt_entry = mm->gdt->pool_alloc(1);
 	gdt_insert(64bit_sysseg_types::LDT,malloc(tosmallpage(maxthreads*16+4+1),pag.SMALLPAGE),ldt_entry);	//4+heap	NOTE boot hardening
 	entry = mm->mem_alloc(ldt_entry,pag.SMALLPAGE,tosmallpage(MAX16BIT),cache.writeback);
 	entry = vmto_entry(entry,&pagetype);
-	entry ^= 1<<1;
+	entry* ^= 1<<1;
 
 	ustd_t ldt_index = (ldt_entry-mm->gdt->pool)/sizeof(mm->gdt->pool*);	//storing index into gdt
 	process->local_descriptor_table ={
-		.pool = ldt_entry;
-		.length = tosmallpage(maxthreads*16+4+1);
+		.pool = entry*;
+		.length = tosmallpage(MAX16BIT);
 		.gdt_index = idt_index;
 		.ckarray = malloc(2,pag.SMALLPAGE);
 	};
