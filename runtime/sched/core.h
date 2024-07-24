@@ -30,6 +30,7 @@ Class Process{
 	Descriptor ** descs;
 	ustd_t polls_count;		//if this is above 20 you swap off the pagetree
 	LDT local_descriptor_table;
+	void * gdt_linear;
 };
 
 Class Processor{
