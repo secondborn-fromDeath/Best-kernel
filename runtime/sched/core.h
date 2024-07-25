@@ -14,6 +14,9 @@ Class Thread{
 	(void (*)(void * data))[MAXSIG];
 	ustd_t stacksize;
 	ustd_t taken;
+	ulong_t syscall_returnval;	//we execute them instantly and then schedule...
+	pollfd * poll;			//pointer to the array of polling structures and their number
+	ustd_t pollnum;
 };
 
 Class Process{
@@ -39,8 +42,15 @@ Class Processor{
 	ustd_t online_capable;
 };
 
+enum polling_actions{ READING,WRITING,MUTEX,};		//... , ... , waiting for no other processes to have the file open			may be ORd
+struct pollfd{
+	ustd_t findex;
+	ushort_t action;
+	ushort_t retaction;
+};
 
-enum signals{
+namespace signals{
+enum{
 	SIGKILL;
 	SIGTERM;
 	SIGSTOP;
@@ -49,16 +59,15 @@ enum signals{
 	SIGUFLOW;
 	SIGFPE;
 	SIGPOLLING;
-	SIGIO;
 	SIGUSR0;
 	SIGUSR1;
 	SIGUSR2;
 	SIGUSR3;
 	SIGUSR4;
 	SIGUSR5;
-}
+};
 #define MAXSIG SIGUSR5;
-
+};
 
 
 
