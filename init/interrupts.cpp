@@ -10,6 +10,20 @@ void ensure_interrupts_mode(void){
 	}
 }
 
+void assign_vector_by_irline(ustd_t irline, ustd_t vector){
+	IOapicGod * iogod = get_ioapicgod_object(void);
+	for (ustd_t p = 0; p < iogod->count; ++p){
+		if (iogod->ckarray[p]){
+			++true_cnt;
+			IOapic * io = &iogod->pool[p];
+			ustd_t val = irline + io->global_base;
+			if !(val > io->global_base+get_max_redir_entries(io->pointer)){
+				assign_vector(io->pointer,irline-io->global_base,vector);
+			}
+		}
+	}
+}
+
 //computing the vectors, sorting ioapics by range and piping into the appropriate one's redirection tables
 //NOTE STANDARDS, this handles one pin.
 void assign_vectors(void){
@@ -23,18 +37,6 @@ void assign_vectors(void){
 		if !(up_down){ offset += (256-32)%dev->numberof_children; ++up_down}
 		else{ up_down = 0;}
 		vectors[i] = offset;
-
-		ustd_t true_cnt = 0;
-		for (ustd_t p = 0; p < iogod->count; ++p){
-			if (iogod->ckarray[p]){
-				++true_cnt;
-				Device * dev = &dev->children[p];
-				IOapic * io = &iogod->pool[p];
-				ustd_t val = dev->irline + io->global_base;
-				if !(val > io->global_base+get_max_redir_entries(io->pointer)){
-					assign_vector(io->pointer,dev->irline);
-				}
-			}
-		}
+		assign_vector_by_irline(dev->irline,offset);
 	}
 }
