@@ -69,20 +69,27 @@ struct MADT_IOAPIC{
 	uint32_t global_system_interrupt_override;
 };
 
-
-
-
-
-
+struct ACPI_FADT{
+	ACPI_SYSHEADER head;
+	uint32_t firmware_ctrl;		//pointer to FACS
+	uint32_t DSDT_pointer;
+	uint8_t pad;
+	uint8_t preferred_PM_profile;
+	uint16_t SCI_IRLINE;
+	uint32_t SCI_CMD_PORT;
+	uint8_t ACPI_ENABLE;
+	uint8_t ACPI_DISABLE;
+	uint8_t S4BIOS_REQ;
+	//many other important fields i am not doing right now...
+};
 
 
 
 
 
 namespace ACPI_SIGNATURES{
-	#define APIC			0x41504943
+	#define MADT			0x41504943		//standing for APIC
 	#define RSDP_PTR_		0x5253442050545220
-
-
+	#define FADT			0x46414350		//stands for FACP
 };
 
