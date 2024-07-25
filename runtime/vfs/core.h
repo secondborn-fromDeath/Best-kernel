@@ -178,6 +178,10 @@ Class Virtual_fs : King{
 };
 
 
+Class memfile : Kshm{
+	struct{ char[4096]} ** pool : Kshm.pool;
+};
+
 Class meta{
 	uchar_t * name;		//null-ending string btw
 	ulong_t namelen;
@@ -234,7 +238,7 @@ Class File{
 						};
 
 						//type==SWAPFILE
-						Kshm swap;
+						memfile swap;
 					};
 				};
 			};
