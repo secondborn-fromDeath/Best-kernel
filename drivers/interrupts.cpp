@@ -31,7 +31,8 @@ Class IOapic{
 	ustd_t linesnum;
 	ustd_t global_base;
 };
-	//you can get the information on the ir pins of devices from pci
+
+	//you can get the information on the ir pins of devices from pci (and acpi)
 	ustd_t assign_vector(IOapic * info, ustd_t rel_line, uchar_t vector){
 		ustd_t * ioapic_cfg = info->mmio;		//the "default" is FEC0000.
 		//writing to regsel the pin number
