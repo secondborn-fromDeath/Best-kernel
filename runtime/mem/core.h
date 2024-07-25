@@ -202,7 +202,7 @@ Class Kingmem{
 			}
 			bit<<=2;
 		}
-		return 1;
+		return NULLPTR;
 	}
 	enum actions{ SET,CLEAR};
 	void manipulate_phys(void ** phys, ustd_t pages_number, ustd_t pagetype, ustd_t action){
