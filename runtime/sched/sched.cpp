@@ -1,3 +1,5 @@
+using namespace signals;
+
 void store_state(Thread * thread);
 void load_state(Thread * thread);
 
@@ -17,19 +19,23 @@ void load_state(Thread * thread);
 		set_thread_object(thread);
 		run_ringthree(thread->state->instruction_pointer);
 	}
+	void help_out(void){
+		Processor * processor = get_processor_object(void);
+		run_thread(&get_threadsking_object(void)->pool[processor->current_thread]);
+	}
 	void getnext_thread(Processor * processor){
 		ThreadsKing * tking = get_threadsking_object(void);
 		tking->stream_init(void);
 		for (ustd_t i = processor->current_thread+1; i != processor->current_thread; ++i){
 			if (i == tking->length){ i = 0;}
 
-			if (tking->pool[i]->parent->sigset & signals.SIGKILL){
+			if (tking->pool[i]->parent->sigset & SIGKILL){
 				--tking->pool[i]->parent->numberof_children;
 				if !(tking->pool[i]->parent->numberof_children){
 					Processking * processking = get_processking_object(void);
-					PKILL(tking->pool[i]->parent,1);	//gets all of our memory back and frees the spot in the process pool
+					PKILL(tking->pool[i]->parent,1);	//gets all of our memory back and frees the spot in the process pool, the memset should be in there
 				}
-				tking->pool_free(&tking[i],1);		//DANGER not zeroing the thread structures causes problems in the signal handlers
+				TKILL(thread);
 			}
 
 			if (tking->pool[i]->type == threadtypes.DRIVER){ tking->pool_free(&tking[i],1);}	//see modinsert
@@ -41,37 +47,65 @@ void load_state(Thread * thread);
 		}
 		__non_temporal tking->calendar = 0;
 		processor->current_thread = -1;
-		halt(void);		//brother will wake it up.
+		halt(void);
 	}
-	//NOTE you likely need functions for the process' signals beyond the kill that is checked above
+	//NOTE you likely need functions for the process' signals beyond the kill that is checked above			yeah but does this check the fucking thread or the process? fuck
 	ustd_t signal_handler(Thread * thread, ustd_t signal){
 		switch (signal){
-			case SIGKILL:{	memset(thread,0,sizeof(Thread)); return 1;}
-			case SIGTERM:{	if (thread->sigmask & SIGTERM){ run_ringthree(thread->sighandlers[SIGTERM]);} TKILL(thread);}
+			case SIGKILL:{	TKILL(thread); return 1;}
 			case SIGSTOP:{	return 1;}
 			case SIGCONT:{	thread->sigset |= SIGSTOP; thread->sigset ^= SIGSTOP; return 0;}
-			//TODO		case SIGIO:{	thread->sigset |= SIGPOLLING; thread->sigset ^= SIGPOLLING; return 0;}
 			default: {
 				if (thread->sighandlers[signals]){
-					thread->state->instruction_pointer = thread->sighandlers[signal];
+					thread->state->instruction_pointer = thread->sighandlers[signal];	//this includes sigterm
 				}
 				return 0;
 			}
 		}
 	}
+	/*
+	Checks both the thread local signals and those of the process*/
 	void check_signals(Thread * thread){
-		for (sig_t i = 0; i < MAXSIG){
+		for (sig_t i = 0; i < MAXSIG; +i){
 			if (thread->sigset & i){
 				signal_handler(thread,i);
 			}
 		}
+		Process * process = thread->parent;
+		for (ustd_t g = 0; i < MAXSIG; ++g){
+			if (process->sigset & g){
+				switch (g){
+					case SIGKILL:{ PKILL(thread->parent); return;}
+					case SIGCONT:{ process->sigset |= SIGSTOP; process->sigset ^= SIGSTOP;}
+				}
+			}
+		}
+	}
+	void get_some_help(void){
+		ProcessorsGod * processors = get_processorsgod_object(void);
+		for (ustd_t i = 0; i < get_processors_number(void); ++i){
+			Processor * brother = &processors->pool[i];
+			if !(brother->executed_threads){
+				if (brother->online_capable){
+					Processor * struggler = get_processor_object(void);
+					ustd_t backup = struggler->current_thread;
+					get_next_thread(void);					//NOTE MAKE SURE THERE ARE FREE THREADS
+					brother->current_thread = struggler->current_thread;
+					struggler->current_thread = backup;
+					poke_brother(i,OS_INTERRUPTS::HELP_OUT);
+					return;
+				}
+			}
+		}
+		BLOOD_LIBEL(void);
+		//get to S1 or something idk
 	}
 	/*
 	Processors taking a rest is done automatically but there is no way to wake processors back up aside from letting IO do it for us so...*/
-	void evalutate_workload(void){
-		//something something account for the skewing of the threads/processors number with the acpi health methods
-		//something something drop the processor's power and let execution be slower as long as all threads get executed
-		//if we are being overwhelmed BLOOD_LIBEL something with a lot of threads
+	void evaluate_workload(void){
+		//something something account for the skewing of the threads/ awake processors number and check thermal with acpi
+		//if processor is overworked wake another up
+		//if we are being overwhelmed BLOOD_LIBEL something
 
 		process->executed_threads = 0;
 	}
@@ -87,7 +121,7 @@ void load_state(Thread * thread);
 		}
 
 		if (executed_threads > ctrl->maxthreads/get_processors_number(void*1)){
-			evalluate_workload(void);
+			evaluate_workload(void);
 		}
 
 		getnext_thread(processor);
