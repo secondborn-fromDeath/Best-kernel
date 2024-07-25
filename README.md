@@ -10,7 +10,6 @@ UEFI x64
 
 # Updates
 may take anywhere between a day and weeks depending on what it is I have implemented.
-At this moment I am implementing a minimal ACPI driver so yeah...
 
 # Contributing
 the kernel is a solo project but device drivers (maybe even userspace applications???) are welcome
