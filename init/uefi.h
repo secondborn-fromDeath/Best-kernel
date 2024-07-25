@@ -25,50 +25,91 @@ struct efimap_descriptor{
 	uint32_t descriptor_size;
 	uint32_t pad;
 };
-void * get_bootservices_table(void * efisystab){		//called in C conv
+void * get_bootservices_table(void * efisystab){
 	void ** h = efisystab+sizeof(efiheader)+68;
 	return h*;
 }
 
+volatile void uefi_wrapper(auto * function, auto one,auto two,auto three,auto four, void * additional, ustd_t adds_num){
+	/*
+	Pushing extra arguments, loading the first 4 argument registers, calling with 16byte alignment, popping things off the stack
+	*/
+	__asm__ volatile(
+	"PUSHq	%%r8\n\t"
+	"PUSHq	%%r9\n\t"
+	"PUSHq	%%rbp\n\t"							//frame
+	"MOVq	%%rsp,%%rbp\n\t"
+	"MOVq	40(%%rbp),%%rax\n\t"						//pointer
+	"MOVq	48(%%rbp),%%rcx\n\t"						//argsnum
+	"uefiwrap_addargs:"
+	"TESTq	%%rcx,%%rcx\n\t"
+	"JZ	uefiwrap_call\n\t"
+	"MOVq	(%%rax,%%rcx,8),%%rdx\n\t"
+	"PUSHq	%%rdx\n\t"
+	"DECq	%%rcx\n\t"
+	"JMP	uefi_addargs\n\t"
+	"uefiwrap_call:\n\t"
+	"MOVq	(%%rbp),%%rax\n\t"
+	"MOVq	8(%%rbp),%%rcx\n\t"						//callconv first 4 arguments...
+	"MOVq	16(%%rbp),%%rdx\n\t"
+	"MOVq	24(%%rbp),%%r8\n\t"
+	"MOVq	32(%%rbp),%%r9\n\t"
+	"CALL	%%rax\n\t"
+	"MOVq	48(%%rbp),%%rcx\n\t"						//cleaning the stack
+	"uefiwrap_popping:\n\t"
+	"TESTq	%%rcx,%%rcx\n\t"
+	"JZ	uefiwrap_return\n\t"
+	"POPq	%%rax\n\t"
+	"DECq	%%rcx\n\t"
+	"JMP	uefiwrap_popping\n\t"
+	"uefiwrap_return:\n\t"
+	"POPq	%%rbp\n\t"							//restoring caller state
+	"POPq	%%r9\n\t"
+	"POPq	%%r8\n\t"
+	"RET\n\t"
+	);
+}
+
+
 //in 4096 byte pages
-void * EFIAPI uefi_allocate_pages(ustd_t pages_number, ulong_t * bootservices_table){
+void * uefi_allocate_pages(ustd_t pages_number, ulong_t * bootservices_table){
 	auto * allocate_pages = (bootservices_table+sizeof(efiheader))[16/8]
 	void * ret;
-	(allocate_pages)(0,0,pages_number,&ret);	//allocate_any, reserve
+	uefi_wrapper(allocate_pages,0,0,pages_number,&ret,0,0);	//allocate_any, reserve
 	return ret;
 }
-void * EFIAPI uefi_map_pages(ustd_t pages_number, void * request, ulong_t * bootservices_table){
+void * uefi_map_pages(ustd_t pages_number, void * request, ulong_t * bootservices_table){
 	auto * allocate_pages = (bootservices_table+sizeof(efiheader))[16/8]
 	void * ret;
-	(allocate_pages)(2,0,pages_number,&ret);	//allocate_address, reserve			DANGER the reserved type
+	uefi_wrapper(allocate_pages,2,0,pages_number,&ret);	//allocate_address, reserve			DANGER the reserved type
 	return ret;
 }
-void EFIAPI get_memmap(efimap_returns * returns, ulong_t * bootservices_table){
+void get_memmap(efimap_returns * returns, ulong_t * bootservices_table){
 	auto * uefi_get_memory_map = (bootservices_table+sizeof(efiheader))[32/8];
 	returns->mapsize = 512*512*4096;
 	returns->map = uefi_allocate_pages(512);	//big enough that it never fails
-	(uefi_get_memory_map)(&returns->mapsize,&returns->map,&returns->mapkey,&returns->descriptor_size,&returns->descriptor_version);
+	uefi_wrapper(uefi_get_memory_map,&returns->mapsize,&returns->map,&returns->mapkey,&returns->descriptor_size,&returns->descriptor_version,1);
 	returns->mapsize /= returns->descriptor_size;
 }
-void EFIAPI exit_boot_services(void * image_handle, uint32_t mapkey, ulong_t * bootservices_table){
+void exit_boot_services(void * image_handle, uint32_t mapkey, ulong_t * bootservices_table){
 	auto * uefi_exbootserv = (bootservices_table+sizeof(efiheader))[208/8];
-	(uefi_exbootserv)(imagehandle,mapkey);
+	uefi_wrapper(uefi_exbootserv,imagehandle,mapkey,0,0,0,0);
 }
 struct loadfile_returns{
 	char * file;
 	ulong_t length;
 };
-char * EFIAPI loadfile(uchar_t * name, ulong_t * bootservices_table, loadfile_returns * returns){
+ustd_t loadfile(uchar_t * name, ulong_t * bootservices_table, loadfile_returns * returns){
 	auto * loadfile = (bootservices_table+sizeof(efiheader))[176/8];
 	uint8_t policy = 0;
 	uint32_t sourcesize = 512*512*4096;
 	void * rethandle;
 	ustd_t pages = 1;
 	void * pointer = uefi_allocate_pages(1);
-	//NOTE HARDENING
-	while ((loadfile)(policy,imagehandle,name,pointer,sourcesize,&rethandle) != EFI_SUCCESS){
+	while (uefi_wrapper(loadfile,policy,imagehandle,name,pointer,sourcesize,&rethandle,1) != EFI_SUCCESS){
 		++pages;
-		pointer = mrealloc(pointer,pages,pag.SMALLPAGE);
+		pointer = mrealloc(pointer,pages,pag.SMALLPAGE,0);
+		if !(pointer){ return (ustd_t)pointer;}
 	}
 	returns->file = pointer;
 	returns->lenght = sourcesize;	//DANGER efi doesnt do a pointer here, kind of weird
