@@ -14,21 +14,21 @@ struct rtc_time{
 	uint8_t pad2;
 };
 
-ulong_t EFIAPI gettime_nanos(void){		//from the start of the day
+ulong_t gettime_nanos(void){		//from the start of the day
 	Kontrol * ctrl = get_kontrol_object(void);
 	struct rtc_time rtcret;
-	(ctrl->efifuncs.getrtc)(&rtcret);
+	uefi_wrapper(ctrl->efifuncs.getrtc,&rtcret,0,0,0,0,0);
 	return rtcret->hour*3600*1000000000 + rtcret->minute*60*10000000000 + rtcret->second*1000000000 + rtcret->nanosecond;
 }
 
-void EFIAPI get_timespec(struct rtc_time * output){
+void get_timespec(struct rtc_time * output){
 	Kontrol * ctrl = get_kontrol_object(void);
-	(ctrl->efifuncs.getrtc)(output);
+	uefi_wrapper(ctrl->efifuncs.getrtc,output,0,0,0,0,0);
 }
-ustd_t EFIAPI set_timespec(struct rtc_time * rtcinsert){	//root things
+ustd_t set_timespec(struct rtc_time * rtcinsert){	//root things
 	if (get_process_object(void)->owner_id != users.ROOT){ return 1;}
 	Kontrol * ctrl = get_kontrol_object(void);
-	(ctrl->efifuncs.setrc)(rtcinsert);
+	uefi_wrapper(ctrl->efifuncs.setrc,rtcinsert,0,0,0,0,0);
 	return 0;
 }
 
@@ -43,13 +43,13 @@ struct KERNwakeup_time{
 	bool pending;
 };
 
-void EFIAPI get_wakeup(struct KERNwakeup_time * output){
+void get_wakeup(struct KERNwakeup_time * output){
 	Kontrol * ctrl = get_kontrol_object(void);
 	struct EFIwakeup_time wkup_ret;
-	(ctrl->efifuncs.getrtc)(wkup_ret);
+	uefi_wrapper(ctrl->efifuncs.getrtc,wkup_ret,0,0,0,0,0);
 }
 
-void EFIAPI set_wakeup(struct rtc_time * wkup_insert){
+void set_wakeup(struct rtc_time * wkup_insert){
 	Kontrol * ctrl = get_kontrol_object(void);
-	(ctrl->efifuncs.set_wakeup)(1,identity);
+	uefi_wrapper(ctrl->efifuncs.set_wakeup,1,identity,0,0,0,0);
 }
