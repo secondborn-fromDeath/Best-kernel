@@ -1,41 +1,62 @@
 /*
-Key is to be interpreted with the parent environment
-We are donig simple recursion with multiple tables
+Functions:
+* means a function is NOT called directly by the kernel
+
+		.env_init(RSDP * RSDP)
+	*	.get_GPE_info()				fills GPE registers info and control methods pointers
+		.build_processors_and_ioapic_array()	fills structures with information from MADT
+		.Fill_DEV()				creates the "virtual" (ie. not pci-addressable) Device structures and fills all Device structures with pointers to their aml object
+		.Execute_Method()			...
+		.Execute_VirtualMethod()		above but goes through southbridge
+		.Shutdown()				...
+		.gpeHandler()				reads the gpes that were signed in the GPEn_BLK registers and executes the aml methods
+		.get_global_lock()			NOT_ASYNC gets ownership of _GLK
+
+if you ever forget anything CORE look up words that buzz from pag.258 and the FACS and FADT structures
+reminder about the x2apic structure for where the processor structures and thermal zones stuff are
+anyway if you forget the aml syntax, reminder there is no recursion at all
 */
 
-
+enum trigger_modes{ LEVEL,EDGE,};
 Class ACPI_driver{
 	ACPI_RSDP * RSDP;
+	struct{
+	uint16_t gpe1_baseport;
+		uint8_t gpe1_length;
+		uint8_t gpe2_length;
+		uint16_t gpe2_baseport;
+		gpe_method * methods;
+	} GPE_info;
 
 
 
-	void env_init(void){
-		 Kingmem * mm; get_kingmem_object(mm);
-		mm->stream_init(void);
-		this.map = mm->get_free_identity(1,MIDPAGE); //getting 2 mb
-		mm->manipulate_phys(this.map,1,SET); __non_temporal mm->calendar = 0;
-	}
+	void env_init(void);
 
-	/*
-	A myriad of get_ XXX methods...*/
-	void build_processors_and_ioapic_array(ProcessorGod * prgod, IOapicGod * iogod){
+	void * find_toplevel_table(ustd_t mask){
 		ustd_t it_inc;
 		ACPI_SYSHEADER * table = sizeof(ACPI_SYSHEADER);
 		if (this.RSDP->revision > 0){ it_inc = 2; table += this.RSDP->XSDT_ptr;}
 		else{ it_inc = 1; table += this.RSDP->RSDT_ptr;}
 
-		//getting to the madt table in the root table entries
-		ACPI_MADT * madt;
-		while (table->head->signature != ACPI_SIGNATURES.APIC){
-			table += table->head->length;
+		for (ustd_t i = 0; i < (table->length-sizeof(ACPI_SYSHEADER))/8;; ++i){
+			ACPI_SYSHEADER * test = ((ACPI_SYSHEADER**)table)[0];
+			if (table->head->signature == mask){
+				return test;
+			}
 		}
-		madt = table;
+		return NULLPTR;
+	}
+	/*
+	A myriad of get_ XXX methods...*/
+	void build_processors_and_ioapic_array(ProcessorGod * prgod, IOapicGod * iogod){
+		//getting to the madt table in the root table entries
+		ACPI_MADT * madt = get_toplevel_table(ACPI_SIGNATURES::APIC);
 
 		Kontrol * ctrl; get_kontrol_object(ctrl);
 		ctrl->lapic_pointer = madt->lapic_override;
 
 		//finding all of the processor and io apic structures and making the entries into the arrays
-		for (table = &madt->structures; table < madt->head->length; table += table->head->length){
+		for (auto * table = &madt->structures; table < madt->head->length; table += table->head->length){
 			if (table->head->type == ACPI_MADT_STRUCTURES.LOCALAPIC){
 				prgod->pool[table->apic_id]->online_capable |= table->flags>>1;	//everything from 2-31 is reserved 0?
 				++prgod->count;
@@ -49,6 +70,14 @@ Class ACPI_driver{
 			}
 		}
 	}
+	//getting the acpi control interrupt global line number and assigning a vector to it (SCI)
+	//attaching an entry to iret() for now lolmao
+	void attach_SCI(void * fadt, ustd_t vector){
+		ACPI_FADT * fadt = get_toplevel_table(ACPI_SIGNATURES::FADT);
+
+		ACPI_FACS * fadt->firmware_ctrl;
+		assign_vector_by_irline(facs->SCI_IRLINE,OS_INTERRUPTS::ACPI_CONTROL);
+	}
 
 	/*
 	Shutting down the machine
@@ -58,7 +87,4 @@ Class ACPI_driver{
 
 */
 	void shutdown(void);
-
-	/*
-	Southbridge stuff*/
 };
