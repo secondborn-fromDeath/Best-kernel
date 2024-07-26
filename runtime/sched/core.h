@@ -44,7 +44,7 @@ Class Processor{
 
 enum polling_actions{ READING,WRITING,MUTEX,};		//... , ... , waiting for no other processes to have the file open			may be ORd
 struct pollfd{
-	ustd_t findex;
+	ustd_t fdesc;
 	ushort_t action;
 	ushort_t retaction;
 };
