@@ -1,4 +1,5 @@
 /*
-This is on hold until i have gotten the kernel to run on an emulator
+I read the spec and stuff but i dont need aml to run on an emulator so i am simply not going to
+write the interpreter until i have strung up a working gui
 
 */
