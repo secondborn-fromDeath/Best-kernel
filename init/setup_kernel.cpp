@@ -17,7 +17,7 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 	ustd_t needfull += sizeof(ProcessorsGod)+sizeof(IOapicGod)+sizeof(Kontrol)+sizeof(Kingmem)+sizeof(King)*8;		//pagetree plus key data
 	tosmallpage(needfull);
 
-	ulong_t * kerndata = uefi_allocate_pages(needfull);
+	ulong_t * kerndata = uefi_allocate_pages(needfull, bootservices_table);
 	__asm__(
 	"MOV	%%rax,%%cr6\n\t"	//this unused control register is used as the base for all of the get_XXX functions...
 	"JMP	+0\n\t"
@@ -104,6 +104,7 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 	constexpr for (ustd_t i = 0; i < syscalls::NUMBER; ++i){
 		sgod->pool[i] = syscalls[i];
 	}
+
 
 	for (1; (config[offset] != '\n') && (config[offset] != '#'); ++offset);
 	config[offset] = 0;
