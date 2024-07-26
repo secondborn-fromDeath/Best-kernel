@@ -131,6 +131,10 @@ Class Virtual_fs : King{
 		}
 	}
 	ustd_t write(ulong_t index, void * buf, ulong_t amount, offset){
+		if (index == get_kontrol_object(void)->get_framebuffer_findex(void)){
+			ps2_enable_device(MOUSE);
+			ps2_enable_device(KEYBOARD);
+		}
 		if (offset > this.pool[index].meta.length){ return 4;}
 		switch (this.pool[index].type){
 			case DIRECTORY:{ return 1;}
