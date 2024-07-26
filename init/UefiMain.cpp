@@ -9,13 +9,12 @@ void processor_init(void){
 
 ustd_t UefiMain(void * image_handle, void * efisystab){
 	processor_init(void);
-	enable_A20(void);
-	uefi_map_pages(1,efisystab);
+	if !(test_ps2_controller(void)){ shutdown(void);}
+	enable_A20(void);						//in uefi this *should* not be needed but whatever
 	void * boottab = get_bootservices_table(efisystab);
-	uefi_map_pages(1,boottab);
 	efimap_returns data;
 	get_uefi_memmap(image_handle,efisystab,&data,boottab);
-	char * initsys = setup_kernel(&data);				//from here on out you can use the kernel memory allocation functions
+	char * initsys = setup_kernel(efisystab,boottab,&data);		//from here on out you can use the kernel memory allocation functions
 	POST_check(void);
 	setup_gdt(void);
 	setup_idt(void);
