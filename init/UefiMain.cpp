@@ -10,15 +10,15 @@ void processor_init(void){
 ustd_t UefiMain(void * image_handle, void * efisystab){
 	processor_init(void);
 	if !(test_ps2_controller(void)){ shutdown(void);}
-	enable_A20(void);						//in uefi this *should* not be needed but whatever
+	enable_A20(void);							//in uefi this *should* not be needed but whatever
 	void * boottab = get_bootservices_table(efisystab);
-	efimap_returns data;
-	get_uefi_memmap(image_handle,efisystab,&data,boottab);
-	char * initsys = setup_kernel(efisystab,boottab,&data);		//from here on out you can use the kernel memory allocation functions
+	void * driver_pointers[16];
+	ustd_t drivnum = initialize_drivers(boottab,driver_pointers);
+	efimap_returns data; get_uefi_memmap(image_handle,efisystab,&data,boottab);
+	char * initsys = setup_kernel(efisystab,boottab,&data,driver_pointers,drivnum);		//from here on out you can use the kernel memory allocation functions
 	POST_check(void);
 	setup_gdt(void);
 	setup_idt(void);
-	enact_IO_context(drivers);
 	exit_bootservices(data->mapkey,boottab);
 	assign_interrupt_vectors(void);
 	sti(void);
