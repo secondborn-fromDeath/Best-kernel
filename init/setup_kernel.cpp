@@ -7,7 +7,7 @@ void set_pagetree(void * pagetree){
 	::"r"(pagetree):);
 }
 //returns the string of the init system path
-char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservices_table){
+char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservices_table, loaded_image ** driver_pointers, ustd_t drivnum){
 	efimap_descriptor * map = data->map;
 	ustd_t i;
 	ulong_t sizeof_memory = 0;
@@ -37,6 +37,7 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 	ctrl* ={
 		.efi_funcs = get_runtime_services_table(void);
 		.shutdown_port = acpi->get_shutdown_port(void);
+		.framebuffer = boot_get_framebuffer(void);
 	};
 
 	Kingmem mm = ctrl+sizeof(Kontrol);
@@ -101,10 +102,23 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 	kptr->pool = malloc(32,pag.MIDPAGE);		//pretty much "whatever" for now lol		NOTE NOTE NOTE NOTE LOOK HERE PLEASE
 	kshm->pool = malloc(32,pag.MIDPAGE);
 
+	/*
+	Creating the IO context, devices can be inserted without drivers but drivers cant without devices.*/
+	load_all_devices(void);
+	for (ustd_t i = data->mapsize; i; --i){
+		if (data->map->vm_pointer == driver_pointer[drivnum]){
+			//to call this in teh first olace i have to do vfs->ramcontents_to_description
+			--drivnum;
+			Storage * fdriv = vfs->ramcontents_to_description(driver_pointers[drivnum]->image_pointer,driver_pointers[drivnum]->size,pag.SMALLPAGE);	//NOTE we want the pagetype to be all done within vfs i think
+			Fdriv ** ptr = drivgod->pool_alloc(1);
+			ptr* fdriv;				//silly lol
+		}
+	}
+	load_all_devices(void);
+
 	constexpr for (ustd_t i = 0; i < syscalls::NUMBER; ++i){
 		sgod->pool[i] = syscalls[i];
 	}
-
 
 	for (1; (config[offset] != '\n') && (config[offset] != '#'); ++offset);
 	config[offset] = 0;
