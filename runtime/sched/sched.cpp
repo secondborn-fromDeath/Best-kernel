@@ -2,22 +2,22 @@ using namespace signals;
 
 void store_state(Thread * thread);
 void load_state(Thread * thread);
+void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure out what do about flags
 
-	void run_ringthree(auto * func){
-		Thread * thread = get_thread_object(void);
+	__attribute__((interrupt)) void run_ringthree(Thread * thread){
 		set_gdt(thread->parent->gdt_linear);
 		set_ldt(thread->parent->local_descriptor_table->pool);
-		schedule_timed_interrupt(SCHEDULER_INTERRUPT_TIMER,EIGHT);	//undefined and random value, see drivers/interrupts.cpp
+		if (thread->type == APPLICATION) {schedule_timed_interrupt(SCHEDULER_INTERRUPT_TIMER,EIGHT);}	//undefined and random value, see drivers/interrupts.cpp
 		uint64_t * sp = get_stack_pointer(void);
 		sp[4] = func;
 		set_ipi_mode(get_selfipi_mask(void));
 		set_task_priority(0);
 		load_state(thread);
-		iret(void);
+		load_stack(thread);
 	}
 	void run_thread(Thread * thread){
 		set_thread_object(thread);
-		run_ringthree(thread->state->instruction_pointer);
+		run_ringthree(thread);
 	}
 	void help_out(void){
 		Processor * processor = get_processor_object(void);
@@ -143,23 +143,30 @@ void load_state(Thread * thread);
 	struct interrupt_stack{
 		uint64_t * errcode,rip,cs,rflags,rsp,ss;
 	};
-	void syscall(void){
+	__attribute__((interrupt)) void interrupt_handler_template(ustd_t num){		//there are supposed to be a lot of these in the binary
 		enter_ringzero(void);
+		(OS_INTERRUPTS::ROUTINES[num])(void);
+		set_task_priority(0);
+		load_state(get_thread_object(void));
+	}
+	void syscall(void){					//gets called by the 0th of above
 		SyscallsGod * sgod = get_syscalls_object(void);
 
-		interrupt_stack * ringzero_stack = get_stack_pointer(void);
+		interrupt_stack * ringzero_stack = (get_stack_pointer(void) -24)/16*16;	//rounding for the function calls...
 		void * userspace_instruction = ringzero_stack->rip;
 		uint64_t * userspace_stack = ringzero_stack->rsp;
-		ustd_t syscall_number = userspace_stack*;
+		ustd_t syscall_number = userspace_stack[0];
 		memcpy(userspace_stack-40,ringzero_stack,40);
 		set_stack_pointer(userspace_stack);			//DANGER task linking
-		(sgod->pool[syscall_number])(void);			//if type==DRIVER syscall returns with iret into the same stack, otherwise jumps to routine
+		LONGJUMP(sgod->pool[syscall_number]);			//if type==DRIVER syscall returns with iret into the same stack, otherwise jumps to routine
 	}
+	#define SYSRET{ LONGJUMP(&sysret)}
 	void sysret(void){
-		if (get_thread_object(void)->type == thread_types.DRIVER){
-			iret(void);
+		Thread * thread = get_thread_object(void);
+		thread->taken = 0;
+		if (get_thread_object(void)->type == thread_types.APPLICATION){
+			LONGJUMP(&routine);
 		}
-		else{ routine(void);}
 	}
 	void timed_out(void){
 		enter_ringzero(void);
