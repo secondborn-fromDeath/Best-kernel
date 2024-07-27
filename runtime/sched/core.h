@@ -4,7 +4,7 @@
 
 
 
-Class Thread{
+class Thread{
 	Process * parent;
 	State * state;			//this includes, at the start, rip,cs,rsp,ss,rflags from the tss and then also all general purpose and vectors
 	ustd_t type;			//module, thread
@@ -19,7 +19,7 @@ Class Thread{
 	ustd_t pollnum;
 };
 
-Class Process{
+class Process{
 //	pid_t pid;
 	user_t owner_id;
 	sig_t sigmask;
@@ -32,11 +32,17 @@ Class Process{
 	ustd_t descriptors;		//current
 	Descriptor ** descs;
 	ustd_t polls_count;		//if this is above 20 you swap off the pagetree
-	LDT local_descriptor_table;
+	class{
+		King{
+			uint64_t * pool : King.pool;
+		};
+		ustd_t segment_selector;
+	} local_descriptor_table;
 	void * gdt_linear;
+	char calendar;			//see swapping
 };
 
-Class Processor{
+class Processor{
 	ulong_t current_thread;
 	ustd_t executed_threads;	//used in rescue_brothers(), as basically "is online"
 	ustd_t online_capable;
