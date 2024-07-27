@@ -5,9 +5,13 @@
 
 
 Functions:
+all mutexes are called internally
+
+
+
 		.getphys_free()				return array of physical pages
 		.getphys_identity()			return first page of a contiguous streak
-		.manipulate_phys()			takes either a SET or CLEAR argument
+		.manipulate_phys()			takes either a SET or CLEAR argument, only needs the mutex on SET
 		.vmtree_lay()				lay down a pagetree, returns the length in pages
 		.vmtree_fetch()				get the first of a streak of entries in the tree
 		.vmto_entry()				return pointer to corresponding entry
@@ -45,19 +49,19 @@ Due to the need for the top bits we do 4level paging, nobody has that much memor
 */
 
 enum pag{ LEV4,BIGPAGE,MIDPAGE,SMALLPAGE};
-Class Kingmem{
+class Kingmem{
 	/*
 	recurse directory, if you dont find what you need move on to the next
 	the state you need for the downwards recursion:
 		quota, stack of offsets, stack of tables(&), the success condition, fail on last offset of last table in highest level dir fails
 	*/
-	void * vmtree_fetch(ustd_t pages_number, ustd_t pagetype){
+	void * vmtree_fetch(void * pagetree, ustd_t pages_number, ustd_t pagetype){
 		ulong_t * tables[pag.SMALLPAGE-pagetype+1];
+		tables[0] = pagetree;
 		void * offsets = NULL;
 		ustd_t quota = 1;
 
 		memset(&tables[1],0,4*(pag.SMALLPAGE-pagetype));
-		tables[0] = get_process_pagetree(void);			//NOTE lol TODO TODO
 		memset(offsets,0,4*(pag.SMALLPAGE-pagetype));
 
 		for (ustd_t su = 0; su < pagetype; ++su);
@@ -106,16 +110,15 @@ Class Kingmem{
 	enum cache{ STRONGUNCACHEABLE,WRITETHROUGH,WRITEBACK,WEAKUNCACHEABLE,WRITEPROTECT,WRITECOMBINING,};	//needed for setting write_combining and write_protect through the mtrrs
 	void * memreq_template(ustd_t pagetype, ustd_t mode, ustd_t cache, ustd_t exec){
 		if (pagetype != pag.SMALLPAGE){
-			__builtin__rotateright32(cache,16);
+			ror32(cache,16);
 			(ushort_t)cache <<=5;
-			__builtin__rotateleft32(cache,16);
+			rol32(cache,16);
 		}
 		return (mode<<9) | cache | exec<<63;
 	}
-	ulong_t * vmto_entry(void * vm, ustd_t * pagetype){
+	ulong_t * vmto_entry(uint64_t * pagetree, void * vm, ustd_t * pagetype){
 		pagetype* = 0;
-		Process * process = get_process_object(void);
-		void * base = process->vmtree;
+		void * base = pagetree;
 		ustd_t bit = pag.SMALLPAGE*9+12;
 		for (ustd_t g = 0; g < pag.SMALLPAGE; ++g){
 			ulong_t * readable = &base[((vm<<64)-(64-bit))>>(64-bit)];
@@ -127,15 +130,15 @@ Class Kingmem{
 		if (readable* & 1){ return NULL;}
 		return readable;
 	}
-	void * vmto_phys(void * vm){
+	void * vmto_phys(void * pagetree, void * vm){
 		ustd_t pagetype;
-		void * entry = vmto_entry(vm,&pagetype);
+		void * entry = vmto_entry(pagetree, vm,&pagetype);
 		if (pagetype == pag.SMALLPAGE){ return (entry<<(64-(12+36)))<<(12+(64-(12+36)));}
 		return (entry<<(64-(12+36)))<<(13+(64-(13+36)));
 	}
-	ustd_t deallocate_vm(void ** physrets, void * vm, ustd_t pages_number){
+	ustd_t deallocate_vm(void * pagetree, void ** physrets, void * vm, ustd_t pages_number){
 		ustd_t pagetype;
-		ulong_t * entries = vmto_entry(vm,&pagetype);
+		ulong_t * entries = vmto_entry(pagetree,vm,&pagetype);
 		if !(entries){ return 1;}
 		ustd_t shift = 12;
 		if (pagetype != pag.SMALLPAGE){ ++shift;}
@@ -160,11 +163,12 @@ Class Kingmem{
 	of the returned array meaning that you can get whatever is available (interactive syscalls?)
 	*/
 	ustd_t get_free_phys(void ** physrets, ustd_t pages_number, ustd_t pagetype){
+		this->stream_init(void);
 		ustd_t multiplier = get_multi_from_pagetype(pagetype);
 		ustd_t bit = 1;
 		ustd_t gate = 0;
 		ustd_t phys_cnt = 0;
-		for (ustd_t indexer = 0; indexer < this.memlen/8; 0){
+		for (ustd_t indexer = 0; indexer < this->memlen/8; 0){
 			if !(bit){ ++bit; ++indexer;}
 			if (gate == multiplier){
 				ustd_t off = 0;
@@ -173,107 +177,118 @@ Class Kingmem{
 				++phys_cnt;
 			}
 			++gate;
-			if (this.phys_ram_table[indexer] & bit){
+			if (this->phys_ram_table[indexer] & bit){
 				gate = 0;
 				if !((indexer*8)%multiplier){ indexer += multiplier/8;}
 				else{ indexer = indexer/(multiplier/8) + multiplier/8;}
 			}
 			bit<<=2;
-			if (phys_cnt == pages_number){ return 0;}
+			if (phys_cnt == pages_number){
+				__non_temporal this->calendar = 0;
+				return 0;
+			}
 		}
+		__non_temporal this->calendar = 0;
 		return 1;
 	}
 	void * get_free_identity(ustd_t pages_number, ustd_t pagetype){
+		this->stream_init(void);
 		ustd_t multiplier = get_multi_from_pagetype(pagetype);
 		ustd_t bit = 1;
 		ustd_t gate = 0;
-		for (ustd_t indexer = 0; indexer < this.memlen/8; 0){
+		for (ustd_t indexer = 0; indexer < this->memlen/8; 0){
 			if !(bit){ ++bit; ++indexer;}
 			if (gate == multiplier*pages_number){
 				ustd_t off = 0;
 				for (ustd_t g = bit; g; g*=2){ ++off;}
+				__non_temporal this->calendar = 0;
 				return (indexer+off)*multiplier;
 			}
 			++gate;
-			if (this.phys_ram_table[indexer] & bit){
+			if (this->phys_ram_table[indexer] & bit){
 				gate = 0;
 				if !((indexer*8)%multiplier){ indexer += multiplier/8;}
 				else{ indexer = indexer/(multiplier/8) + multiplier/8;}
 			}
 			bit<<=2;
 		}
+		__non_temporal this->calendar = 0;
 		return NULLPTR;
 	}
+	//this being one function is kind of silly...
 	enum actions{ SET,CLEAR};
 	void manipulate_phys(void ** phys, ustd_t pages_number, ustd_t pagetype, ustd_t action){
+		if (action == actions.SET){ this->stream_init(void);}
 		ustd_t quota = get_multi_from_pagetype(pagetype);
 		for (ustd_t i = 0; i < pages_number; ++i){
 			ustd_t indexer = phys/8/4096;
 			ustd_t bit = 1;
 			for (ustd_t j = 0; j < quota; ++j){
-				this.phys_ram_table[indexer] |= bit;
-				if (action == actions.CLEAR){ this.phys_ram_table[indexer] ^= bit;}
+				this->phys_ram_table[indexer] |= bit;
+				if (action == actions.CLEAR){ this->phys_ram_table[indexer] ^= bit;}
 				bit *= 2;
 				if !(bit){ ++bit;}
 			}
 		}
+		if (action == actions.SET){ __non_temporal this->calendar = 0;}
 	}
-	void * mem_alloc(ustd_t pagetype, ustd_t pages_number){
+	void * mem_alloc(void * pagetree, ustd_t pagetype, ustd_t pages_number){
 		void * templ = memreq_template(pagetype,mode.RESERVE,0);
-		void * ret = vmtree_fetch(pages_number, pagetype);
-		ulong_t * off = vmto_entry(ret,&pagetype);
-		for (ustd_t h = 0; h < this.dir_entries[pagetype]; ++h){
+		void * ret = vmtree_fetch(pagetree,pages_number,pagetype);
+		ulong_t * off = vmto_entry(pagetree,ret,&pagetype);
+		for (ustd_t h = 0; h < this->dir_entries[pagetype]; ++h){
 			off[h] = templ;
 		}
 	}
-	void * mem_map(void * target, ustd_t pagetype, ustd_t pages_number, ustd_t cache){
+	void * mem_map(void * pagetree, void * target, ustd_t pagetype, ustd_t pages_number, ustd_t cache){
 		void * templ = memreq_template(pagetype,mode.MAP,cache);
-		void * ret = vmtree_fetch(pages_number, pagetype);
-		ulong_t * off = vmto_entry(ret,&pagetype);
+		void * ret = vmtree_fetch(pagetree,pages_number,pagetype);
+		ulong_t * off = vmto_entry(pagetree,ret,&pagetype);
 		ustd_t addition = get_multi_from_pagetype(pagetype);
 		ustd_t bit = 12; if (pagetype == pag.SMALLPAGE){ ++bit;}
-		for (ustd_t h = 0; h < this.dir_entries[pagetype]; ++h){
+		for (ustd_t h = 0; h < this->dir_entries[pagetype]; ++h){
 			off[h] = templ | (target+addition*h)<<bit;
 		}
 	}
-	void mem_free(void * vm, ustd_t pages_number, ustd_t pagetype){
+	void mem_free(void * pagetree, void * pagetree, void * vm, ustd_t pages_number, ustd_t pagetype){
 		void * phys[pages_number];
 		deallocate_vm(phys,vm,pages_number);			//NOTE optimization
 		manipulate_phys(phys,pages_number,pagetype,CLEAR);
 		void * templ = memreq_template(pagetype,mode.RESERVE,cache.WRITEBACK);
 		ulong_t off = vmto_entry(vm);
-		for (ustd_t h = 0; h < this.dir_entries[pagetype]; ++h){
+		for (ustd_t h = 0; h < this->dir_entries[pagetype]; ++h){
 			off[h] = templ;
 		}
 	}
-	void mem_unmap(void * vm, ustd_t pages_number, ustd_t pagetype){
+	void mem_unmap(void * pagetree, void * vm, ustd_t pages_number, ustd_t pagetype){
 		void * templ = memreq_template(pagetype,mode.RESERVE,cache.WRITEBACK);
-		ulong_t off = vmto_entry(vm);
-		for (ustd_t h = 0; h < this.dir_entries[pagetype]; ++h){
+		ustd_t trash;
+		ulong_t off = vmto_entry(pagetree,vm,&trash);
+		for (ustd_t h = 0; h < this->dir_entries[pagetype]; ++h){
 			off[h] = templ;
 		}
 	}
 	//NOTE HARDENING this only supports extending the mapping
-	void mem_realloc(void * vm, ustd_t oldpages, ustd_t newpages, ustd_t pagetype){	//"Keep your pointer, son. I will take it from here."
+	void mem_realloc(void * pagetree, void * vm, ustd_t oldpages, ustd_t newpages, ustd_t pagetype){	//"Keep your pointer, son. I will take it from here."
 		void * phys[pages_number];
-		deallocate_vm(phys,vm,oldpages);
-		vmtree_fetch(newpages,pagetype);
+		deallocate_vm(pagetree,phys,vm,oldpages);
+		vmtree_fetch(pagetree,newpages,pagetype);
 		void * templ = memreq_template(pagetype,mode.RESERVE,cache.WRITEBACK);
-		ulong_t off = vmto_entry(vm);
+		ulong_t off = vmto_entry(pagetree,vm);
 		ustd_t bit = 12; if (pagetype == pag.SMALLPAGE){ ++bit;}
-		for (ustd_t h = 0; h < this.dir_entries[pagetype]; ++h){
+		for (ustd_t h = 0; h < this->dir_entries[pagetype]; ++h){
 			off[h] = templ | phys[h]<<bit;
 		}
 	}
-	void mem_remap(void * vm, ustd_t oldpages, ustd_t newpages, ustd_t pagetype){
+	void mem_remap(void * pagetree, void * vm, ustd_t oldpages, ustd_t newpages, ustd_t pagetype){
 		void * phys[pages_number];
-		deallocate_vm(phys,vm,oldpages);
-		vmtree_fetch(newpages,pagetype);
+		deallocate_vm(pagetree,phys,vm,oldpages);
+		vmtree_fetch(pagetree,newpages,pagetype);
 		void * templ = memreq_template(pagetype,mode.RESERVE,cache.WRITEBACK);
-		ulong_t off = vmto_entry(vm);
+		ulong_t off = vmto_entry(pagetree,vm);
 		ustd_t addition = get_multi_from_pagetype(pagetype);
 		ustd_t bit = 12; if (pagetype == pag.SMALLPAGE){ ++bit;}
-		for (ustd_t h = 0; h < this.dir_entries[pagetype]; ++h){
+		for (ustd_t h = 0; h < this->dir_entries[pagetype]; ++h){
 			off[h] = templ | (phys+addition*h)<<bit;
 		}
 	}
@@ -286,13 +301,13 @@ Class Kingmem{
 	/*
 	This swaps out to disks whatever pages have been marked as reserved in a process' pagetree
 	*/
-	void swap_process(DisksKing * dking){
+	void swap_process(void){
 		DisksKing * dking = get_disksking_object(void);
 		Process * process = get_process_object(void);
 		Virtual_fs * vfs = get_vfs_object(void);
 		Kingmem * mm = get_kingmem_object(void);
 
-		process->stream_init(void);
+		process->mutex(void);
 
 		//so basically i am resetting the entries after finding the position on disk each time, now you have to track how deep the i inside of the pagetree though
 		ustd_t pagetype = 0;
@@ -303,7 +318,7 @@ Class Kingmem{
 			if ((process->pagetree[i] & 512)&&(pagetype == pag.SMALLPAGE))||((pagetype != pag.SMALLPAGE)&&(!(process->pagetree[i] & 128))){		//so awful
 				if ((pagetype != pag.SMALLPAGE)&&(process->pagetree)){ break;}
 				for(ustd_t g = 0; g < dking->length; ++g){
-					ustd_t pages = get_multi_from_pagetype(pagetype)/4096;
+					ustd_t pages = mm->get_multi_from_pagetype(pagetype)/4096;
 					swappages_pos = dking-swaps[g]->shm->pool_alloc(pages);
 					if (swappages_pos){
 						void * identity = exchange_swap(&process->pagetree[i],swappages_pos);
@@ -318,13 +333,21 @@ Class Kingmem{
 
 		__non_temporal process->calendar = 0;
 	}
-	void softfault_handler(void){
+	void fault_handler(void){
+		enter_ringzero(void);
+		Kingmem * mm = get_kingmem_object(void);
 		void * vm = __asm__("mov %%cr2,%%rax\n\t");
 		ustd_t pagetype;
-		ulong_t * entry = vmto_entry(vm,&pagetype);		//MASSIVE DANGER read the binary for how pagetype gets passed, if shit is grim use Kingmem (this is locked anyway)
-
+		ulong_t * entry = mm->vmto_entry(vm,&pagetype);		//MASSIVE DANGER read the binary for how pagetype gets passed, if shit is grim use Kingmem (this is locked anyway)
+		if (entry & 1){		//present bit, checking wether hard or soft fault
+			mm->hardfault_handler(entry);
+		}
+		else{
+			mm->softfault_handler(entry);
+		}
+	}
+	void hardfault_handler(void * entry, ustd_t pagetype){
 		Kingmem * mm = get_kingmem_object(void);
-		mm->stream_init(void);
 
 		switch(entry* <<(64-12))>>53)
  			case mode.RESERVE:{
@@ -360,17 +383,10 @@ Class Kingmem{
 				process->sigset |= SIGSEGV;
 			break;}
 		}
-
-		__non_temporal mm->calendar = 0;
-
-		iret(void);
 	}
-	void hardfault_handler(void){
-		void * vm = __asm__("mov %%cr2,%%rax\n\t");
+	void hardfault_handler(void * entry, ustd_t pagetype){
 		Process * process = get_process_object(void);
 		Kingmem * mm = get_kingmem_object(void);
-		ustd_t pagetype;
-		ulong_t * entry = mm->vmto_entry(vm,&pagetype);		//MASSIVE DANGER read the binary for how pagetype gets passed, if shit is grim use Kingmem (this is locked anyway)
 		if (pagetype != pag.SMALLPAGE){++bit;}
 		if ((entry*<<(64-12))>>54 == mode.SWAPPED){
 			ustd_t processor_id = mm->stream_init(void);
@@ -394,6 +410,5 @@ Class Kingmem{
 			__non_temporal vfs->descriptions[dking->disks[disk]]->shm->calendar = 0;
 		}
 		else{process->sigset |= SIGSEGV;}
-		iret(void);
 	}
 };
