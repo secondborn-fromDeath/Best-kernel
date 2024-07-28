@@ -15,13 +15,16 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 
 	ustd_t needtree = 512+(sizeof_memory>>30)*(512+gigs*(512*512*512));	//4level paging
 	ustd_t needfull += sizeof(ProcessorsGod)+sizeof(IOapicGod)+sizeof(Kontrol)+sizeof(Kingmem)+sizeof(King)*8;		//pagetree plus key data
-	tosmallpage(needfull);
+	needfull = tosmallpage(needfull);
 
 	ulong_t * kerndata = uefi_allocate_pages(needfull, bootservices_table);
 	__asm__(
-	"MOV	%%rax,%%cr6\n\t"	//this unused control register is used as the base for all of the get_XXX functions...
+	"MOVq	%%rax,%%cr13"
 	"JMP	+0\n\t"
-	::"r"(kerndata+needtree):);
+	"ADDq	%%rcx,%%rax\n\t"
+	"MOVq	%%rax,%%cr6\n\t"	//this unused control register is used as the base for all of the get_XXX functions...
+	"JMP	+0\n\t"
+	::"r"(kerndata),"r"(needtree):);
 
 	Kingmem *pOOP = NULL;
 	pOOP->vmtree_lay(kerndata,sizeof_memory>>30);
@@ -73,6 +76,7 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 	SyscallsGod * sgod = runtimemodking + sizeof(King);
 	DriversGod * drivgod = shm_king + sizeof(King);
 	DriverProcessGod * runtimemodking = drivgod + sizeof(King);
+	Taskpimp * taspimp = runtimemodking + sizeof(DriverProcessGod);
 
 	/*
 	ugly...
@@ -97,6 +101,7 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 	INITIALIZE_POOL_BASED_ON_CONFIG(descriptorsking);
 	INITIALIZE_POOL_BASED_ON_CONFIG(threadking);
 	INITIALIZE_POOL_BASED_ON_CONFIG(vfs);
+	INITIALIZE_POOL_BASED_ON_CONFIG(taskpimp);
 
 	kptr->pool = malloc(32,pag.MIDPAGE);		//pretty much "whatever" for now lol		NOTE NOTE NOTE NOTE LOOK HERE PLEASE
 	kshm->pool = malloc(32,pag.MIDPAGE);
