@@ -37,7 +37,6 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 	ctrl* ={
 		.efi_funcs = get_runtime_services_table(void);
 		.shutdown_port = acpi->get_shutdown_port(void);
-		.framebuffer = boot_get_framebuffer(void);
 	};
 
 	Kingmem mm = ctrl+sizeof(Kontrol);
@@ -102,8 +101,23 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 	kptr->pool = malloc(32,pag.MIDPAGE);		//pretty much "whatever" for now lol		NOTE NOTE NOTE NOTE LOOK HERE PLEASE
 	kshm->pool = malloc(32,pag.MIDPAGE);
 
+
 	/*
-	Creating the IO context, devices can be inserted without drivers but drivers cant without devices.*/
+	Making all of the peculiar directories*/
+	vfs->descriptions[0]->meta.name[] = ['/',0,];
+	uint64_t whore = 0x646576;
+	vfs->directory_constructor(vfs->descriptions[1],vfs->descriptions[0],&whore);	//dev
+	whore = 0x6D6F6473;
+	vfs->directory_constructor(vfs->descriptions[2],vfs->descriptions[0],&whore);	//mods
+
+	void * fb; uint64_t fb_length;			//putting the framebuffer under dev, separately from the video card device (becuase the windowing system wants to map it)
+	boot_get_framebuffer(&fb,&fb_length);
+	Storage * framebuffer = vfs->ramcontents_to_description(fb,fb_length,pag.MIDPAGE);
+	whore = 0x6662;		//fb
+	vfs->storage_constructor(framebuffer,vfs->descriptions[1],&whore);
+
+	/*
+	Creating the IO context, devices can be inserted without drivers but drivers cant without devices....*/
 	load_all_devices(void);
 	for (ustd_t i = data->mapsize; i; --i){
 		if (data->map->vm_pointer == driver_pointer[drivnum]){
@@ -120,7 +134,8 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 		sgod->pool[i] = syscalls[i];
 	}
 
+	char * ret = config+offset;
 	for (1; (config[offset] != '\n') && (config[offset] != '#'); ++offset);
 	config[offset] = 0;
-	return config+offset;
+	return ret;
 }
