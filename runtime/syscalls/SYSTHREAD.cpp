@@ -1,4 +1,3 @@
-//takes mm with the process' tree already set by the way
 void make_stack(Process * process, Thread * thread){
 	Exec_header * header = thread->father->code;			//the other problem is "does this work fine when you have more than one stack"
 	Kingmem * mm = get_kingmem_object(void);
