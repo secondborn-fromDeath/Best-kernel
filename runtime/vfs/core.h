@@ -17,10 +17,10 @@ enum filetypes{
 	DIRECTORY,
 	STORAGE,
 	DEVICE,
-	CONNECTION,
+	CONNECTION,		//this shoudlnt be here...
 };
 
-Class Virtual_fs : King{
+class Virtual_fs : King{
 	void scan_partitions(void);	//returns pointers and ids into an array
 	Partlayout_driver partlay[???];
 	void insert_file(void);		//filesystem-style translator
@@ -28,6 +28,17 @@ Class Virtual_fs : King{
 
 	File * pool : King.pool;
 	extern get_rand32(void) : King.get_rand(void);
+
+
+
+	void template_constructor(File * newfile, File * parent, char * name, ustd_t type){
+		File ** term = parent->children->pool_alloc(1);
+		term* = newfile;
+		strcpy(&newfile->meta.name,name);
+		newfile->meta.type = type;
+	}
+	#define storage_constructor(a,b,c){ template_constructor(a,b,c,filetypes.STORAGE)}
+	#define directory_constructor(a,b,c){ template_constructor(a,b,c,filetypes.DIRECTORY); a->children->length = 0; a->children->count = 0; a->children->pool = 0}
 
 	Storage * ramcontents_to_description(void * contents, ulong_t length, ustd_t pagetype){
 		Storage * newfren = this.pool_alloc(1);
@@ -42,7 +53,7 @@ Class Virtual_fs : King{
 	}
 
 	//loads a page of a file on disk if it is even needed
-	void load_page(DisksGod * dking, Storage * file, ustd_t page){
+	void * load_page(DisksGod * dking, Storage * file, ustd_t page){
 		if (page > file->length){ return 1;}
 		if !(file->shared_contents[page]){
 			file->shared_contents[page] = malloc(1,file->mapped_pagetype);	//NOTE HARDENING
@@ -158,7 +169,6 @@ Class Virtual_fs : King{
 	*/
 	void writeback_cycle(Virtual_fs * vfs,){
 		DisksKing * dking = get_disksking_object(void);
-		dking->stream_init(void);
 
 		for (ustd_t i = 0; i < this.length; ++i){
 			if (this.ckarray[i]){
@@ -177,18 +187,16 @@ Class Virtual_fs : King{
 				if ((closedyet == file->pages_count) && (file->pending_sync)){ dking->sync(file);}	//NOTE there is some nuance to that function obviously...
 			}
 		}
-		__non_temporal dking->calendar = 0;
 	}
 };
 
 
-Class memfile : Kshm{
+class memfile : Kshm{
 	struct{ char[4096]} ** pool : Kshm.pool;
 };
 
-Class meta{
+class meta{
 	uchar_t * name;		//null-ending string btw
-	ulong_t namelen;
 	ustd_t type;
 	ustd_t mode;
 	ulong_t length;		//length on disk in smallpages
@@ -196,7 +204,7 @@ Class meta{
 	ondisk_t diskpos;
 };
 
-Class File{
+class File{
 	meta data;
 	File * parent;
 
@@ -216,6 +224,7 @@ Class File{
 		ustd_t expansion_rom;		//holy shit its mikerkode
 		Driver * driver;
 		ustd_t maxfunc;			//max function number under ioctl
+		King mut;
 	};
 	struct{
 		union{
@@ -224,8 +233,7 @@ Class File{
 			union{
 				//type==DIRECTORY
 				struct{
-					ustd_t * children;		//indexes into the pool pool
-					ustd_t numberof_children;
+					Kptr children;
 				};
 				//..
 				struct{
@@ -252,13 +260,13 @@ Class File{
 	Driver d;
 	};
 };
-Class Directory : File;
-Class Storage : File;
-Class Device : File;
-Class KingSwap : File;
-Class fiDriv : File;
+class Directory : File;
+class Storage : File;
+class Device : File;
+class KingSwap : File;
+class fiDriv : File;
 
-Class Descriptor{
+class Descriptor{
 	ulong_t desc_index;
 	ustd_t polled;
 	ustd_t flags;		//the first bit of flags indicates a file mapping if set
