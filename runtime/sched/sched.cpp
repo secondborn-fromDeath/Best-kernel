@@ -1,19 +1,15 @@
 using namespace signals;
 
-void store_state(Thread * thread);
+void store_state(Thread * thread);	//reminder these do gdt,ldt and pagetree... possibly in the future tss???? NOTE OPTIMIZATION
 void load_state(Thread * thread);
 void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure out what do about flags
 
 	__attribute__((interrupt)) void run_ringthree(Thread * thread){
-		set_gdt(thread->parent->gdt_linear);
-		set_ldt(thread->parent->local_descriptor_table->pool);
-		if (thread->type == APPLICATION) {schedule_timed_interrupt(SCHEDULER_INTERRUPT_TIMER,EIGHT);}	//undefined and random value, see drivers/interrupts.cpp
-		uint64_t * sp = get_stack_pointer(void);
-		sp[4] = func;
 		set_ipi_mode(get_selfipi_mask(void));
 		set_task_priority(0);
 		load_state(thread);
 		load_stack(thread);
+		if (thread->type == APPLICATION) {schedule_timed_interrupt(SCHEDULER_INTERRUPT_TIMER,EIGHT);}	//undefined and random value, see drivers/interrupts.cpp
 	}
 	void run_thread(Thread * thread){
 		set_thread_object(thread);
@@ -107,7 +103,8 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 		//if processor is overworked wake another up
 		//if we are being overwhelmed BLOOD_LIBEL something
 
-		process->executed_threads = 0;
+		//something something do a loop where you zero out all of the processsors' executed_threads so that you can tell who is slacking and who got
+		//stolen by a driver or something		NOTE this is a crypto-mining anti-feature...
 	}
 	void routine(void){
 		Kontrol * ctrl = get_kontrol_object(void);
