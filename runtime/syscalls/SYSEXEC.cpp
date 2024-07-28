@@ -127,7 +127,7 @@ ulong_t exec(ustd_t findex){
 	memset(process->local_descriptor_table->ckarray,1,6);		//firsy 4 + heap and mainthread tls
 
 	//making a stack for the main thread
-	make_stack(mm,main_thread);
+	make_stack(process->pagetree,main_thread);
 
 	main_thread->state->fs = 4;		//heap segment
 	process->local_descriptor_table->pool[4] = data_segment_insert(header->heapsize,pag.SMALLPAGE);	//NOTE HARDENING
