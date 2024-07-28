@@ -3,7 +3,7 @@ ustd_t modinsert(ustd_t drivindex){
 	Kingmem * mm = get_kingmem_object(void);
 	Kingptr * kptr = get_kingpointer_object(void);
 
-	Directory * dev = vfs->descriptions[get_kontrol_object(void)->devices_directory];
+	Directory * dev = vfs->descriptions[1];
 	dev->children = kptr->pool_realloc(dev->children_number,dev->children_number+1,dev->children);
 	fiDriv * driv = vfs->pool_alloc(1);
 	dev->children->children_number = driv;
@@ -15,11 +15,9 @@ ustd_t modinsert(ustd_t drivindex){
 		if !(relgod->ckarray[driv->d->code->types[i]]){ return NULL;}
 		relgod = relgod->pool[driv->d->code->types[i]]
 	}
-	drivgod->stream_init(void);
 	fiDriv ** ptr = drivgod->pool_alloc(1);
-	__non_temporal drivgod->calendar = 0;
 	ptr* = driv;
 
 	driv->runtime->workers[0]->type = thread_types::DRIVER;
-	run_ringthree(driv->runtime->children[0]);
+	run_ringthree(driv->runtime->children[0]);		//dw about the timer
 }
