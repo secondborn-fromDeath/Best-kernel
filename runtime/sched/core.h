@@ -17,6 +17,7 @@ class Thread{
 	ulong_t syscall_returnval;	//we execute them instantly and then schedule...
 	pollfd * poll;			//pointer to the array of polling structures and their number
 	ustd_t pollnum;
+	Thread * prior;			//see ioctl and Taskpimp
 };
 
 class Process{
