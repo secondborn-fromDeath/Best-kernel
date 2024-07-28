@@ -2,6 +2,7 @@
 Control register reference because it is needed:Ã
 11:	thread object pointer
 6:	data pointer
+13:	ringzero pagetree
 5:	information pass, boot
 9:	information count, boot
 15:	used by bsp for the APid in serve_data()*/
@@ -46,7 +47,14 @@ void receive_data(void){
 	__asm__ volatile(
 	"MOVq	%%rax,%%cr6\n\t"
 	"JMP	+0\n\t"
-	::"r"(r):);
+	::"r"(data):);
+
+	//setting the ringzero pagetree
+	__asm__ volatile(
+	"MOVq	%%rax,%%cr13\n\t"
+	"JMP	+0\n\t"
+	::"r"(get_kingmem_object(void)->vm_ram_table):);
+
 	poke_brother(bsp_id,OS_INTERRUPTS::ENDOF_TRANSACTION);
 	halt(void);
 }
