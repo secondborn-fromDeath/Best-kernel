@@ -164,36 +164,59 @@ devenum_bail:		++device_number;
 		return boot_read(processor,dev,0x18);
 	}
 	/*
-	This function is going to return the base, type and size of the address range
-	The other function does the header decoding part and calls on this ONLY for the BARs
-																										the File class is getting really ugly...
+	This is a bit dense but if you ignore the looping due to teh bigger BARs it is easy, also we are returning to skip already-used bars in the caller
 	*/
-	void get_bar_info(Processor * processor, Device * dev, ustd_t rangenum, ustd_t reg){	//i got the procedure from osdev.org/PCI#Address_and_size_of_the_BAR
-		//backing up the base of the range
-		ustd_t base = boot_reg(processor,dev,reg);
-		uchar_t type = base <<31>>31;
-		for (ustd_t i = 0; i < rangenum; ++i){ type<<=1;}
-		dev->bases[rangenum] = base >>1<<1;
-		dev->range_mask |= type;
-		//disabling anything memory and serial ports access because of bad behaviour that may be caused otherwise by the next step
-		ustd_t dis = get_command(processor,dev);
-		set_command(processor,dev,dis<<2>>2);
-		//reading the size of the range by writing all 1s to the BAR register and then reading
-		boot_write(processor,dev,reg,-1);
-		dev->lengths[rangenum] = (~(boot_read(processor,dev,reg)<<2>>2))+1;	//removing type bits and computing two's complement
+	ustd_t get_bar_info(Processor * processor, Device * dev, ustd_t rangenum, ustd_t reg){	//i got the procedure from osdev.org/PCI#Address_and_size_of_the_BAR
+		ustd_t retu = 0;
+		ustd_t or = 0;		//gets increased by 32 on 64bit bar
+		ustd_t loop = 1;
 
-		//restoring everything
-		boot_write(processor,dev,reg,base);
-		set_command(processor,dev,dis);
+			//i am thinking that the loop should be up here and i would not be increasing it and instead breaking? increase it but only once probably.
+
+		for (1; loop; --loop){
+			//backing up the base of the range
+			ustd_t base = boot_reg(processor,dev,reg);
+			if !(base & 1){					//testing the first bit for serial ports space vs memory
+				if (base & 3){				//testing the type field for 64bit BAR
+					if !(or){ ++loop;
+					retu += 2;}			//no such thing as a 96 bit BAR...
+				}
+				if (base & 4){				//testing wether theaddress range is prefetcheable
+					dev->types[rangenum] = 2;
+				}else{ dev->types[rangenum] = 0;}
+			}
+			else{
+				dev->types[rangenum] = 1;
+			}
+			dev->bases[rangenum] = NULLPTR;
+			dev->lengths[rangenum] = NULLPTR;
+			dev->bases[rangenum] |= (base>>4<<4)<<or;
+			//taking away the device's ability to master south and northbridge
+			ustd_t dis = get_command(processor,dev);
+			set_command(processor,dev,dis<<2>>2);
+			//reading the size of the range by writing all 1s to the BAR register and then reading
+			boot_write(processor,dev,reg,-1);
+			dev->lengths[rangenum] |= ((!(boot_read(processor,dev,reg)<<2>>2))+1))<<or;	//removing type bits and computing two's complement
+
+			//restoring everything
+			boot_write(processor,dev,reg,base);
+			set_command(processor,dev,dis);
+
+			or += 32;
+		}
 	}
 	/*
 	Things that are not bars are SUPER silly in pcibridge so they get done by hand
 	as long as the resulting structures are fine...
 	*/
 	void set_device_ranges(Processor * processor, Device * dev, ustd_t headtype){
+		memset(dev->bases,0,sizeof(dev->bases*)*6);
+		memset(dev->lengths,sizeof(dev->lengths*)*6);
+		memset(dev->types,0,sizeof(dev->types*)*6);
+
 		if (headtype == PCI_TO_PCI_DEVICE){
 			ustd_t regoff = 0x10;
-			constexpr for (ustd_t i = 0; i < 6; ++i){ get_bar_info(processor,dev,i,regoff);}
+			for (ustd_t i = 0; i < 6; ++i){ i += get_bar_info(processor,dev,i,regoff);}
 		}
 		else{	//PCI_TO_PCI_BRIDGE
 			get_bar_info(processor,dev,0,0x10);
@@ -202,15 +225,18 @@ devenum_bail:		++device_number;
 			ustd_t overarching_dword = boot_read(processor,dev,0x20);
 			dev->bases[2] = overarching_dword<<16>>16;
 			dev->lengths[2] = overarching_dword>>16 - dev->bases[2];
+			dev->types[2] = 0;
 			//serial ports field
 			overarching_dword = boot_read(processor,dev,0x1c);
 			ustd_t helper_dword = boot_read(processor,dev,0x30);
 			dev->bases[3] = overarching_dword<<24>>24 | helper_dword<<16>>16;
 			dev-lengths[3] = (overarching_dword<<16>>24 | helper_dword>>16) - dev->bases[3];
+			dev->types[3] = 1;
 			//prefetchable field
 			overarching_dword = boot_read(processor,dev,0x24);
 			dev->bases[4] = overarching_dword<<16>>16 | boot_read(processor,dev,0x28);
 			dev->lengths[4] = overarching_dword>>16 | boot_read(processor,dev,0x2c) - dev->bases[4];
+			dev->types[3] = 2;
 		}
 	}
 
