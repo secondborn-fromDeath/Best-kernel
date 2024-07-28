@@ -15,6 +15,7 @@ all mutexes are called internally
 		.vmtree_lay()				lay down a pagetree, returns the length in pages
 		.vmtree_fetch()				get the first of a streak of entries in the tree
 		.vmto_entry()				return pointer to corresponding entry
+		.entryto_vm()				returns vm pointer, given the entry
 		.vmto_phys()				return physical translation
 		.deallocate_vm()			return physical translation and reset entries to default
 		.memreq_template()			pipe page settings into a "template"
@@ -136,6 +137,17 @@ class Kingmem{
 		if (pagetype == pag.SMALLPAGE){ return (entry<<(64-(12+36)))<<(12+(64-(12+36)));}
 		return (entry<<(64-(12+36)))<<(13+(64-(13+36)));
 	}
+	void * entryto_vm(void * entry){
+		Process * process = get_process_object(void);
+		ustd_t whatever = entry - process->pagetree;
+		void * vm = NULLPTR;
+		for (ustd_t i = pag.SMALLPAGE; i; --i){
+			ustd_t g = get_multi_from_pagetype(i);
+			vm |= (whatever/g)<<(12+9*i);
+			whatever %= g;
+		}
+		return vm;
+	}
 	ustd_t deallocate_vm(void * pagetree, void ** physrets, void * vm, ustd_t pages_number){
 		ustd_t pagetype;
 		ulong_t * entries = vmto_entry(pagetree,vm,&pagetype);
@@ -250,7 +262,7 @@ class Kingmem{
 			off[h] = templ | (target+addition*h)<<bit;
 		}
 	}
-	void mem_free(void * pagetree, void * pagetree, void * vm, ustd_t pages_number, ustd_t pagetype){
+	void mem_free(void * pagetree, void * vm, ustd_t pages_number, ustd_t pagetype){
 		void * phys[pages_number];
 		deallocate_vm(phys,vm,pages_number);			//NOTE optimization
 		manipulate_phys(phys,pages_number,pagetype,CLEAR);
