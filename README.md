@@ -2,8 +2,8 @@
 better than even loonix.
 
 # Features
-Drivers run on ring 3 and interface with devices through system calls, supports driver hotplugging (things such as cryptography libraries included), *any* drivers can be loaded or omitted using a simple configuration file, same goes for settings such as the maximum file descriptors a process may hold.
-At boot the kernel is loaded directly and performs the initialization duties, so you dont need to waste disk space.
+Drivers run on ring 3 and interface with devices through system calls, supports driver hotplugging ("protocol" "drivers" included), *most* drivers can omitted at boot using a simple configuration file, same goes for settings such as the maximum file descriptors a process may hold or the number of threads for a process.
+At boot the kernel is loaded directly and performs the initialization duties, so you dont need to waste disk space with a huge bootloader.
 
 # Support
 UEFI x64
