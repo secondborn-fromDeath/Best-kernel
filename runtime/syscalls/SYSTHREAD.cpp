@@ -1,17 +1,22 @@
+//this is complete retardation, we need to solve the actual problem we had that caused us to do this shit instead
+
+
+
+
 //takes mm with the process' tree already set by the way
-void make_stack(void * pagetree, Thread * thread){
-	Exec_header * header = thread->father->code;
+void make_stack(Process * process, Thread * thread){
+	Exec_header * header = thread->father->code;			//the other problem is "does this work fine when you have more than one stack"
+	Kingmem * mm = get_kingmem_object(void);
 
-	std(void);
-	void * entry = stringz(pagetree);	//getting the highest entry into the pagetree
-	cld(void);
+	void * entry = mm->vmtree_fetch(process->pagetree,header->stacksize+1,pag.SMALLPAGE);	//DANGER assuming you are left at the bottom
+	entry = mm->vmto_entry(process->pagetree,entry) + (header->stacksize+1)*8;
 
-	thread->state.stack_pointer = entryto_vm(pagetree,entry);
-	for (ustd_t h = 0; h < header->stacksize; ++h){				//NOTE HARDENING
+	thread->state.stack_pointer = entryto_vm(process->pagetree,entry);
+	for (ustd_t h = 0; h < header->stacksize; ++h){
 		entry* = (malloc(1,pag.SMALLPAGE)<<12) | memreq_template(pag.SMALLPAGE,mode.RESERVE,cache.WRITEBACK,0);	//non executable stack
 		entry -= 8;
 	}
-	entry* = NULLPTR;	//guard page
+	entry* = 0;	//guard page
 }
 
 //on the tin it says that you are cloning everything (at least until we have flags, TODO) from the calling thread...
@@ -28,7 +33,7 @@ void thread(void){
 	memcpy(newfag.desc_indexes,calling_thread->desc_indexes,calling_thread->desc_count);
 
 	//making a stack for the new thread
-	make_stack(calling_thread->parent->pagetree,newfag);
+	make_stack(calling_thread->father,newfag);
 
 	//assigning the heap and thread local storage segments
 	newfag->state.fs = 4;
