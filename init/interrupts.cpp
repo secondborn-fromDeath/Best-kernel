@@ -1,4 +1,4 @@
-//checking if it is not enabled, if shutting down because it cant be enabled
+//checking if apic is enabled, if not shutting down because it cant be enabled and i do not support PIC
 void ensure_interrupts_mode(void){
 	ustd_t bottom;
 	ustd_t c = 0x1B;
@@ -39,4 +39,5 @@ void assign_vectors(void){
 		vectors[i] = offset;
 		assign_vector_by_irline(dev->irline,offset);
 	}
+	init_timer(void);
 }
