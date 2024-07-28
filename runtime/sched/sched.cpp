@@ -1,6 +1,6 @@
 using namespace signals;
 
-void store_state(Thread * thread);	//reminder these do gdt,ldt and pagetree... possibly in the future tss???? NOTE OPTIMIZATION
+void store_state(Thread * thread);	//reminder these do gdt,ldt and pagetree... possibly in the future tss for drivers???? NOTE OPTIMIZATION
 void load_state(Thread * thread);
 void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure out what do about flags
 
@@ -106,6 +106,7 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 		//something something do a loop where you zero out all of the processsors' executed_threads so that you can tell who is slacking and who got
 		//stolen by a driver or something		NOTE this is a crypto-mining anti-feature...
 	}
+	#define RESCHEDULE LONGJUMP(&routine)
 	void routine(void){
 		Kontrol * ctrl = get_kontrol_object(void);
 		Kingmem * mm = get_kingmem_object(void);
@@ -129,6 +130,7 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 
 
 	void enter_ringzero(void){
+		set_pagetree(get_ringzero_pagetree(void));
 		set_task_priority(15);
 		store_state(get_thread_object(void));
 		set_gdt(get_kontrol_object(void)->gdt);
@@ -149,12 +151,11 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 	void syscall(void){					//gets called by the 0th of above
 		SyscallsGod * sgod = get_syscalls_object(void);
 
-		interrupt_stack * ringzero_stack = (get_stack_pointer(void) -24)/16*16;	//rounding for the function calls...
-		void * userspace_instruction = ringzero_stack->rip;
-		uint64_t * userspace_stack = ringzero_stack->rsp;
+		interrupt_stack * ringzero_stack = (get_stack_pointer(void) -24)/16*16;				//alignment...
+		uint64_t * userspace_stack = vmto_entry(get_process_object(void)->pagetree,ringzero_stack->rsp);
 		ustd_t syscall_number = userspace_stack[0];
 		memcpy(userspace_stack-40,ringzero_stack,40);
-		set_stack_pointer(userspace_stack);			//DANGER task linking
+		set_stack_pointer(userspace_stack);			//DANGER ebil magick task linking???
 		LONGJUMP(sgod->pool[syscall_number]);			//if type==DRIVER syscall returns with iret into the same stack, otherwise jumps to routine
 	}
 	#define SYSRET{ LONGJUMP(&sysret)}
@@ -162,10 +163,10 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 		Thread * thread = get_thread_object(void);
 		thread->taken = 0;
 		if (get_thread_object(void)->type == thread_types.APPLICATION){
-			LONGJUMP(&routine);
+			RESCHEDULE;
 		}
 	}
 	void timed_out(void){
 		enter_ringzero(void);
-		routine(void);
+		RESCHEDULE;
 	}
