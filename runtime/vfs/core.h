@@ -220,7 +220,8 @@ class File{
 		uchar_t ranges_mask;		//IO space / memory bit
 		uchar_t multifunction_boo;
 		ulong_t bases[6];		//64bit prefetchables in pcibridge...
-		ustd_t lengths[6];		//they are not going to need more than that.
+		ulong_t lengths[6];		//they are not going to need more than that.
+		char types[6];			//0 is uncacheable memory, 1 is serial ports and 2 is prefetcheable memory
 		ustd_t expansion_rom;		//holy shit its mikerkode
 		Driver * driver;
 		ustd_t maxfunc;			//max function number under ioctl
