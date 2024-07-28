@@ -26,7 +26,7 @@ page 858 of the i486 manual
 		IO apic portion of things:
 	*/
 
-Class IOapic{
+class IOapic{
 	void * pointer;
 	ustd_t linesnum;
 	ustd_t global_base;
@@ -154,6 +154,25 @@ Class IOapic{
 		((char *)lapic)[0x300/8] = regnum;
 		return lapic[0xC0/4];
 	}
+	void init_timer(void){
+		ustd_t * lapic = get_lapic_pointer(void);
+		ustd_t f = lapic[320/4];
+		f &= 0xFFFFFFFF^(1<<17);				//configuring it as one-shot and it will stay that way forever
+		(char)f = OS_INTERRUPTS::TIMER;				//assigning it the vector
+		lapic[320/] = f;
+	}
+	void mask_timer(void){
+		ustd_t * lapic = get_lapic_pointer(void);
+		ustd_t f = lapic[320/4];
+		f |= 1<<16;				//DANGER we need it to work like this step by step.
+		lapic[320/] = f;			//setting the mask bit
+	}
+	void unmask_timer(void){
+		ustd_t * lapic = get_lapic_pointer(void);
+		ustd_t f = lapic[320/4];
+		f &= 0xFFFFFFFF^(1<<16);		//clearing the mask bit
+		lapic[320/] = f;
+	}
 	/*
 	This one might want more options but eh
 	*/
@@ -163,14 +182,15 @@ Class IOapic{
 
 		//writing to initial count
 		lapic[0x380/4] = ticks;
-		ustd_t pipe = 0;
+		ustd_t pipe = lapic[0x320/4];
 		if (divider){
 			//setting divide base
-			lapic[0x3E0/4] = divider;	//DANGER not using the enum is undefine behaviour. i wonder if there is some compiler nonsense to enforce the passing of immediate values...
+			lapic[0x3E0/4] = divider;
 			//indicating we are going to use the divider
 			pipe |= 2<<18;
 		}
 		lapic[0x320/4] = pipe;
+		unmask_timer(void);
 	}
 	ustd_t get_targetipi_mask(void){
 		return 1<<14 | 1<<15 | 0<<18;		//assert, level triggered, target in +0x310
