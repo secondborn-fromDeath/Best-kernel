@@ -12,7 +12,10 @@ ulong_t ioctl(ustd_t devindex, ustd_t funcindex, auto * data, auto * ret){
 
 	dev->mut->stream_init(void);
 
-	if (dev->driver->runtime->code.methodsnum < funcindex){ calling_thread->syscall_retval = -1;}
+	if ((!dev->driver) || (dev->driver->runtime->code.methodsnum < funcindex)){
+		calling_thread->syscall_retval = -1;
+		SYSRET;
+	}
 
 	Kingmem * mm = get_kingmem_object(void);
 	Thread * calling_thread = get_thread_object(void);
@@ -29,12 +32,11 @@ ulong_t ioctl(ustd_t devindex, ustd_t funcindex, auto * data, auto * ret){
 
 	dev->state.instruction_pointer = dev->driv->code->functions[funcindex]);
 	run_thread(dev->thread);
-
-	__non_temporal dev->mut->calendar = 0;
-	return 0;
 }
 
 //SYSCALL(IO_INTERRUPTS::IOCTL_RETURN);			this is the interrupt that calls onto this
 void * ctl_ret(void){
-	run_thread(get_thread_object(void)->prior);
+	Thread * thread = get_thread_object(void);
+	__non_temporal thread->double_link->mut->calendar = 0;
+	RESCHEDULE;
 }
