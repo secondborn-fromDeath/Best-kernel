@@ -1,7 +1,3 @@
-/*
-Translates arguments to something kernelspacew palatable, calls the function from the driver's functions
-*/
-
 struct drivercode{
 	ustd_t type;
 	ustd_t methodsnum;	//number of functions
@@ -9,22 +5,36 @@ struct drivercode{
 	auto * functions[];
 };
 
-ulong_t ioctl(ustd_t drivindex, ustd_t funcindex, auto * data, auto * ret){
+//data MUST be less than one page in length, same for the return
+ulong_t ioctl(ustd_t devindex, ustd_t funcindex, auto * data, auto * ret){
 	Virtual_fs * vfs = get_vfs_object(void);
-	Device * dev = &vfs->descriptions[drivindex];
+	Device * dev = &vfs->descriptions[devindex];
 
-	if (dev->code.methodsnum < funcindex){ return 1;}
+	dev->mut->stream_init(void);
+
+	if (dev->driver->runtime->code.methodsnum < funcindex){ calling_thread->syscall_retval = -1;}
 
 	Kingmem * mm = get_kingmem_object(void);
-	Process * process = get_process_object(void);
-	mm->stream_init(void);
-	void * backup = mm->vm_ram_table;
-	mm->vm_ram_table = process->pagetree;
-	auto * passdata = mm->vmto_phys(data);
-	auto * passret = mm->vmto_phys(ret);
-	mm->vm_ram_table = backup;
-	__non_temporal mm->calendar = 0;
+	Thread * calling_thread = get_thread_object(void);
+	auto * data = mm->vmto_phys(process->pagetree,data);
+	auto * ret = mm->vmto_phys(process->pagetree,ret);
 
-	(dev->driv->code->functions[funcindex])(passdata,passret);
+	//creating a new task so that i can make the state persist recursively through calls to ioctl
+	Taskpimp * pimp = get_taskpimp_object(void);
+	dev->thread->prior = pimp->pool_alloc(1);
+
+	dev->thread->state.stack_pointer -= 16;
+	dev->thread->state.stack_pointer[0] = mm->mem_map(dev->driver->runtime->pagetree,passdata,pag.SMALLPAGE,1,cache.WRITEBACK);
+	dev->thread->state.stack_pointer[1] = mm->mem_map(dev->driver->runtime->pagetree,passdata,pag.SMALLPAGE,1,cache.WRITEBACK);
+
+	dev->state.instruction_pointer = dev->driv->code->functions[funcindex]);
+	run_thread(dev->thread);
+
+	__non_temporal dev->mut->calendar = 0;
 	return 0;
+}
+
+//SYSCALL(IO_INTERRUPTS::IOCTL_RETURN);			this is the interrupt that calls onto this
+void * ctl_ret(void){
+	run_thread(get_thread_object(void)->prior);
 }
