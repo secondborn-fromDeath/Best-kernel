@@ -1,7 +1,7 @@
 /*
 The format (BEFF, the Better Executable File Format) specifies a header, an identification string, a checksum and a binary, the header is the following:
 */
-Class Exec_header{
+class Exec_header{
 	uchar_t heapsize;	//in 4096 byte pages
 	uchar_t tls_size;
 	uchar_t stacksize;
@@ -50,56 +50,63 @@ ulong_t exec(ustd_t findex){
 	Process * calling_process = calling_thread->parent;
 	if (header->program_type == programtypes.SYSTEM) && (calling_process->owner_id != users.ROOT){ return -2;}	//this is nonsense lol
 
-	source->shared_contents[0] = header;
+	//loading the rest of the file
 	ustd_t multi = mm->get_multi_from_pagetype(source->mapped_pagetype);
 	for (ustd_t i = 1; i < vfs->descriptions[findex].meta.length; ++i){
 		vfs->load_page(dking,source,i);
 	}
 
 
-
 	Kingprocess * kprc = get_kingprocess_object(void);
 	Process * process = kprc->pool_alloc(1);
 
 	process* = {
-//		.pid = process_index,
 		.owner_id = calling_process->owner_id,		//inherited from the launching shell
 		.sigmask = 0,
 		.sigset = calling_process->sigset,		//preventing weird hackkxxs
-		.wk_cnt = 1,
-		.max_desc = header->max_descriptors,
+		.workers->count = 1,
+		.descs->maximum = header->max_descriptors,
 		.calendar = 0;
+		.code = header;
 	};
 
 
 	Kingptr * ptr = get_pointer_object(void);
-	process->workers = kptr->pool_alloc(1);
-	process->descs = kptr->pool_alloc(2);
+	process->workers->pool = kptr->pool_alloc(1);
+	process->descs->pool = kptr->pool_alloc(2);
 
 	Kingthread * ktrd = get_kingthread_object(void);
-	Thread * main_thread = ktrd->pool_alloc(1);
+	Thread * main_thread = ktrd->pool_alloc(1);		//NOTE RACE CONDITION ->taken needs to be within alloc
 	main_thread->taken = 1;
-	process->workers[0] = main_thread;
+	process->workers->pool[0] = main_thread;
 
 	Kingdescs * kdescs = get_kingdescriptors_object(void);
-	process->descs[0] = kdescs->pool_alloc(1);
-	process->descs[1] = kdescs->pool_alloc(1);
-	process->descs[0]->index = calling_process->descs[0]->index;	//same root context as the parent
-	process->descs[1]->index = DEVDESC;				//this is just /dev
+	process->descs->pool[0] = kdescs->pool_alloc(1);
+	process->descs->pool[1] = kdescs->pool_alloc(1);
+	process->descs->pool[0]->index = calling_process->descs->pool[0]->index;	//same root context as the parent
+	process->descs->pool[1]->index = DEVDESC;				//this is just /dev
 	kdescs->calendary = 0;
 
+	//NOTE mke it a function
+	process->pagetree_length = 512*8;				//finding the length of the pagetree
+	ustd_t mul = 512;
+	for (ustd_t i = header->expected_memory_usage; i; --i){
+		process->pagetree_length += mul*expected_memory_usage;
+		mul *= 512;
+	}
 
 	//making the tree and piping it into Kingmem
-	process->pagetree = malloc(tosmallpage(pagetree_length),pag.SMALLPAGE);
+	process->pagetree = malloc(tosmallpage(process->pagetree_length),pag.SMALLPAGE);
 	mm->vmtree_lay(process->pagetree,header->expected_memory_usage);
 
+	//NOTE you can simplify this iwth fmap() maybe?
 	//mapping the executable file
-	ulong_t * entry = mm->mem_map(process->pagetree,source->shared_contents[0],pagetype,1,cache.WRITEBACK);
+	process->userspace_code = mm->mem_map(process->pagetree,source->shared_contents->pool[0],pagetype,1,cache.WRITEBACK);
 	main_thread->state->instruction_pointer = header->start + entry;
 	ustd_t pagetype;
-	entry = mm->vmto_entry(process->pagetree,entry,&pagetype);
+	ulong_t * entry = mm->vmto_entry(process->pagetree,process->userspace_code,&pagetype);
 	for (ustd_t g = 0; g < vfs->descriptions[findex].meta.length; ++g){
-		entry[g] = mm->memreq_template(pagetype,mode.MAP,cache.WRITEBACK,1) | vfs->descriptions[findex]->shared_contents[g]<<12;
+		entry[g] = mm->memreq_template(pagetype,mode.MAP,cache.WRITEBACK,1) | vfs->descriptions[findex]->shared_contents->pool[g]<<12;
 		entry[g] |= 1<<63;		//setting pages as executable
 	}
 
@@ -108,12 +115,12 @@ ulong_t exec(ustd_t findex){
 	process->gdt_linear = mm->mem_map(process->pagetree,mm->gdt->pool,pag.SMALLPAGE,tosmallpage(MAXA16BIT),cache.WRITEBACK);
 	entry = mm->vmto_entry(process->pagetree,process->gdt_linear,pagetype);
 	for (ustd_t g = 0; g < vfs->descriptions[findex].meta.length; ++g){
-		entry[g] = mm->memreq_template(pag.SMALLPAGE,mode.MAP,cache.WRITEBACK,1) | mm->gdt->pool+tosmallpage(1)*g;
+		entry[g] = mm->memreq_template(pag.SMALLPAGE,mode.MAP,cache.WRITEBACK,1) | mm->gdt->pool+4096*g;
 		entry[g] ^= 1<<1;		//setting the pages as unreadable/writeable
 	}
 	//mapping the ldt
 	process->local_descriptor_table->segment_selector = (mm->gdt->alloc(1)-mm->gdt->pool)/16;
-	ustd_t ldtlen = tosmallpage(kontrol->max_threads*16+4+1);
+	ustd_t ldtlen = tosmallpage((kontrol->max_threads+4+1)*16);
 	void * actual_ldt = malloc(ldtlen,pag.SMALLPAGE);
 	gdt_insert(64bit_sysseg_types::LDT,actual_ldt,pag.SMALLPAGE),ldt_entry);							//4*GP# + heap	NOTE boot hardening
 	mm->mem_map(process->pagetree,actual_ldt,pag.SMALLPAGE,ldtlen,cache.WRITEBACK);
