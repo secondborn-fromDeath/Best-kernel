@@ -23,8 +23,7 @@ ulong_t ioctl(ustd_t devindex, ustd_t funcindex, auto * data, auto * ret){
 	auto * ret = mm->vmto_phys(process->pagetree,ret);
 
 	//creating a new task so that i can make the state persist recursively through calls to ioctl
-	Taskpimp * pimp = get_taskpimp_object(void);
-	dev->thread->prior = pimp->pool_alloc(1);
+	dev->thread->prior = calling_thread;
 
 	dev->thread->state.stack_pointer -= 16;
 	dev->thread->state.stack_pointer[0] = mm->mem_map(dev->driver->runtime->pagetree,passdata,pag.SMALLPAGE,1,cache.WRITEBACK);
@@ -38,5 +37,6 @@ ulong_t ioctl(ustd_t devindex, ustd_t funcindex, auto * data, auto * ret){
 void * ctl_ret(void){
 	Thread * thread = get_thread_object(void);
 	__non_temporal thread->double_link->mut->calendar = 0;
-	RESCHEDULE;
+	set_thread(thread->prior);
+	sysret(void);
 }
