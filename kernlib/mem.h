@@ -11,10 +11,10 @@ void mfree(void * pointer, ustd_t pages_number, ustd_t pagetype){
 	mm->manipulate_phys(ret,pages_number,pagetype,CLEAR);
 }
 //this is slow but whatever
-void * mrealloc(void * pointer, ustd_t previous_pages, ustd_t new_pages, ustd_t pagetype){
+void * mrealloc(void * pointer, ustd_t previous_pages, ustd_t new_pages, ustd_t pagetype, ustd_t backup){
 	Kingmem * mm = get_kingmem_object(void);
 	void * newp = malloc(new_pages,pagetype);
-	memcpy(newp,pointer,get_multi_from_pagetype(pagetype)*previous_pages);
+	if (backup){ memcpy(newp,pointer,get_multi_from_pagetype(pagetype)*previous_pages);}
 	mfree(pointer,previous_pages,pagetype);
 	return newp;
 }
