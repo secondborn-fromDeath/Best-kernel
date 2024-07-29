@@ -20,7 +20,6 @@ void thread(void){
 
 	Thread * calling_thread = get_thread_object(void);
 	memcpy(newfag,calling_thread,sizeof(Thread));
-	newfag->taken = 0;					//newfriend is not being taken care of by anybody unlike oldfren
 
 	Kingptr * kptr = get_pointer_object(void);
 	newfag->desc_indexes = kptr->pool_alloc(calling_thread->desc_count);
@@ -31,9 +30,7 @@ void thread(void){
 
 	//assigning the heap and thread local storage segments
 	newfag->state.fs = 4;
-	newfag->state.gs = process->local_descriptor_table->segment_alloc(1);
+	newfag->state.gs = process->local_descriptor_table->pool_alloc(1);
+
+	newfag->taken = 0;
 }
-
-
-
-
