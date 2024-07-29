@@ -1,6 +1,20 @@
 void * get_kernelcode_pointer(void){
+	void * ret;
 	__asm__ volatile(
-	"MOV	-KERNELCODE_START(%%rip),%%rax\n\t"
-	"RET\n\t"
-	);
+	"CALL	+0\n\t"
+	"POPq	%%rax\n\t"
+	"ADDq	_start,%%rax\n\t"	//i think the math is right? the label should be negative
+	::"r"(ret):);
+	return ret;
+}
+ulong_t get_kernelcode_size(void){
+	ulong_t ret = (ulong_t)get_kernelcode_pointer(void);
+	ulong_t whore;
+	__asm__ volatile{
+	"CALL	+0\n\t"
+	"POPq	%%rax\n\t"
+	"ADDq	_end_of_code,%%rax\n\t"
+	"SUBq	%%rax,%%rcx\n\t"
+	::"r"(whore),"r"(ret):}
+	return ret;
 }
