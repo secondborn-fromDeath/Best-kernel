@@ -26,12 +26,11 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 			if (i == tking->length){ i = 0;}
 
 			if (tking->pool[i]->parent->sigset & SIGKILL){
-				--tking->pool[i]->parent->numberof_children;
-				if !(tking->pool[i]->parent->numberof_children){
+				TKILL(thread);
+				if !(tking->pool[i]->parent->workers->count){
 					Processking * processking = get_processking_object(void);
 					PKILL(tking->pool[i]->parent,1);	//gets all of our memory back and frees the spot in the process pool, the memset should be in there
 				}
-				TKILL(thread);
 			}
 
 			if (tking->pool[i]->type == threadtypes.DRIVER){ tking->pool_free(&tking[i],1);}	//see modinsert
@@ -46,14 +45,17 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 		halt(void);
 	}
 	//NOTE you likely need functions for the process' signals beyond the kill that is checked above			yeah but does this check the fucking thread or the process? fuck
-	ustd_t signal_handler(Thread * thread, ustd_t signal){
-		switch (signal){
+	ustd_t signal_handler(Thread * thread, ustd_t index, ustd_t signal){
+		switch (index){
 			case SIGKILL:{	TKILL(thread); return 1;}
 			case SIGSTOP:{	return 1;}
 			case SIGCONT:{	thread->sigset |= SIGSTOP; thread->sigset ^= SIGSTOP; return 0;}
 			default: {
-				if (thread->sighandlers[signals]){
-					thread->state->instruction_pointer = thread->sighandlers[signal];	//this includes sigterm
+				if (thread->sigmask & signal){
+					return 0;
+				}
+				if (thread->sighandlers[index]){	//this is wrong.
+					thread->state->instruction_pointer = thread->sighandlers[index];	//this includes sigterm
 				}
 				return 0;
 			}
@@ -62,10 +64,12 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 	/*
 	Checks both the thread local signals and those of the process*/
 	void check_signals(Thread * thread){
-		for (sig_t i = 0; i < MAXSIG; +i){
-			if (thread->sigset & i){
-				signal_handler(thread,i);
+		ustd_t g = 1;
+		for (sig_t i = 0; i < MAXSIG; ++i){
+			if (thread->sigset & g){
+				if (signal_handler(thread,i,g)){ RESCHEDULE;}
 			}
+			g*=2;
 		}
 		Process * process = thread->parent;
 		for (ustd_t g = 0; i < MAXSIG; ++g){
@@ -85,7 +89,7 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 				if (brother->online_capable){
 					Processor * struggler = get_processor_object(void);
 					ustd_t backup = struggler->current_thread;
-					get_next_thread(void);					//NOTE MAKE SURE THERE ARE FREE THREADS
+					get_next_thread(void);
 					brother->current_thread = struggler->current_thread;
 					struggler->current_thread = backup;
 					poke_brother(i,OS_INTERRUPTS::HELP_OUT);
@@ -142,11 +146,22 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 	struct interrupt_stack{
 		uint64_t * errcode,rip,cs,rflags,rsp,ss;
 	};
-	__attribute__((interrupt)) void interrupt_handler_template(ustd_t num){		//there are supposed to be a lot of these in the binary
+	__attribute__((interrupt)) void os_interrupt_handler_template(constexpr vector){		//there are supposed to be a lot of these in the binary
 		enter_ringzero(void);
-		(OS_INTERRUPTS::ROUTINES[num])(void);
+		(OS_INTERRUPTS::ROUTINES[vector])(void);
 		set_task_priority(0);
 		load_state(get_thread_object(void));
+	}
+	//this sure is high overhead
+	__attribute__((interrupt)) void device_interrupt_handler_template(constexpr vector){
+		enter_ringzero(void);
+		Virtual_fs * vfs = get_vfs_object(void);
+		Directory * dev = &vfs->descriptions[1];
+		register Thread * thread = dev->children->pool[(vector-64)/dev->children->count]->thread;
+		thread->prior = get_thread_object(void);
+		set_stack_pointer(thread->state.stack_pointer);
+		thread->instruction_pointer = dev->virt_irhandler;
+		run_thread(thread);
 	}
 	void syscall(void){					//gets called by the 0th of above
 		SyscallsGod * sgod = get_syscalls_object(void);
@@ -165,6 +180,7 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 		if (get_thread_object(void)->type == thread_types.APPLICATION){
 			RESCHEDULE;
 		}
+		run_thread(thread);
 	}
 	void timed_out(void){
 		enter_ringzero(void);
