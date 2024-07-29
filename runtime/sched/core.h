@@ -3,50 +3,55 @@
 #include <other/userspace_environment.h>
 
 
+class process_descriptors : Hash{
+	Descriptor ** pool : Hash.pool;
+	ustd_t maximum;
+};
+class process_threads : Hash{
+	Thread ** pool : Hash.pool;
+	ustd_t maximum;
+};
+class local_descriptor_table : King{
+	uint64_t * pool : King.pool;
+	ustd_t segment_selector;
+};
 
+enum thread_types{ DRIVER,MODULE,THREAD,DEVICE,};	//all have different behaviour
 class Thread{
 	Process * parent;
-	State * state;			//this includes, at the start, rip,cs,rsp,ss,rflags from the tss and then also all general purpose and vectors
-	ustd_t type;			//module, thread
-	tid_t tid;
+	State state;			//this includes, at the start, rip,cs,rsp,ss,rflags from the tss and then also all general purpose and vectors
+	ustd_t type;
+	auto * double_link;		//see type
 	sig_t sigmask;
 	sig_t sigset;
 	(void (*)(void * data))[MAXSIG];
-	ustd_t stacksize;
+//	ustd_t stacksize;		//process-based
 	ustd_t taken;
 	ulong_t syscall_returnval;	//we execute them instantly and then schedule...
-	pollfd * poll;			//pointer to the array of polling structures and their number
+	pollfd * poll;			//physical pointer to the userspace array of polling structures and their number
 	ustd_t pollnum;
-	Thread * prior;			//see ioctl and Taskpimp
+	Thread * prior;			//see ioctl
 };
 
 class Process{
-//	pid_t pid;
 	user_t owner_id;
 	sig_t sigmask;
 	sig_t sigset;
 	void * pagetree;
+	void * userspace_code;		//below but virtual
 	void * code;
-	tid_t wk_cnt;
-	Thread ** workers;
-	descriptor_t max_desc;		//cant change at process-runtime
-	ustd_t descriptors;		//current
-	Descriptor ** descs;
+	process_threads workers;
+	process_descriptors descs;
 	ustd_t polls_count;		//if this is above 20 you swap off the pagetree
-	class{
-		King{
-			uint64_t * pool : King.pool;
-		};
-		ustd_t segment_selector;
-	} local_descriptor_table;
+	char calendar;			//used for EVERYTHING
+	local_descriptor_table ldt;
 	void * gdt_linear;
-	char calendar;			//see swapping
 };
 
 class Processor{
 	ulong_t current_thread;
 	ustd_t executed_threads;	//used in rescue_brothers(), as basically "is online"
-	ustd_t online_capable;
+	ustd_t online_capable;		//from acpi
 };
 
 enum polling_actions{ READING,WRITING,MUTEX,};		//... , ... , waiting for no other processes to have the file open			may be ORd
@@ -75,8 +80,3 @@ enum{
 };
 #define MAXSIG SIGUSR5;
 };
-
-
-
-
-
