@@ -1,4 +1,4 @@
-volatile void SYSREAD(ustd_t descriptor, void * buf, ulong_t amount, ulong_t offset){
+void SYSREAD(ustd_t descriptor, void * buf, ulong_t amount, ulong_t offset){
 	Virtual_fs * vfs = get_vfs_object(void);
 	Thread * thread = get_thread_object(void);
 	Process * process = thread->parent;
