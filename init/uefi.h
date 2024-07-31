@@ -83,18 +83,17 @@ __asm__ volatile(
 "MOVq	%%rdx,%%r10\n\t"
 "TESTq	%%r10,%%r10\n\t"
 "JZ	uefiwrapper_call\n\t"
-"MOVq	56(%%rsi),%%rcx\n\t"
+"MOVq	64(%%rsi),%%rcx\n\t"
 "TESTq	%%r10,%%r10\n\t"
 "JZ	uefiwrapper_call\n\t"
-"MOVq	64(%%rsi),%%rdx\n\t"
+"MOVq	72(%%rsi),%%rdx\n\t"
 "TESTq	%%r10,%%r10\n\t"
 "JZ	uefiwrapper_call\n\t"
-"MOVq	72(%%rsi),%%r8\n\t"
+"MOVq	80(%%rsi),%%r8\n\t"
 "TESTq	%%r10,%%r10\n\t"
 "JZ	uefiwrapper_call\n\t"
-"MOVq	80(%%rsi),%%r9\n\t"
+"MOVq	88(%%rsi),%%r9\n\t"
 "MOVq	%%rsp,%%rdi\n\t"
-"ADDq	$32,%%rsi\n\t"
 "uefiwrapper_additionals_loop:"
 "TESTq	%%r10,%%r10\n\t"
 "JZ	uefiwrapper_call\n\t"
@@ -158,11 +157,11 @@ image_loaded * loadfile(loadfile_args * args, ulong_t * bootservices_table, void
 void uefi_locate_protocol(char * guid, ulong_t * bootservices_table){				//destroys you guid
 	uefi_wrapper(bootservices_table[280/8],guid,1);
 }
-void boot_get_framebuffer(auto * boottab, Kontrol * ctrl){
+void boot_get_framebuffer(auto * boottab, void ** fb_pointer, uint64_t * fb_size){
 	char pass[16] = UEFI_GRAPHICS_OUTPUT_PROTOCOL;
 	uefi_locate_protocol(pass,boottab);
-	ctrl->framebuffer = ((graphics_info*)pass)->physical_framebuffer;
-	ctrl->framebuffer_size = ((graphics_info*)pass)->framebuffer_size;
+	fb_pointer* = pass->framebuffer_base;
+	fb_size* = pass->framebuffer_size;
 }
 
 namespace uefi_memtypes{	//dont ask to make sense of this because it simply makes no sense and i want no part of it.
