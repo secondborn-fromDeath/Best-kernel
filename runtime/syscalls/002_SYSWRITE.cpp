@@ -1,4 +1,4 @@
-volatile void SYSWRITE(ustd_t desc, void * buf, ustd_t amount, ustd_t offset){
+void SYSWRITE(ustd_t desc, void * buf, ustd_t amount, ustd_t offset){
 	Virtual_fs * vfs = get_vfs_object(void);
 	Thread * thread = get_thread_object(void);
 	Process * process = thread->parent;
