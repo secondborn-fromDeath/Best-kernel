@@ -16,6 +16,11 @@ ustd_t UefiMain(void * image_handle, void * efisystab){
 	ustd_t drivnum = initialize_drivers(boottab,driver_pointers);
 	efimap_returns data; get_uefi_memmap(image_handle,efisystab,&data,boottab);
 	char * initsys = setup_kernel(efisystab,boottab,&data,driver_pointers,drivnum);		//from here on out you can use the kernel memory allocation functions
+	ustd_t root = vfs->mount(root_disk,root_partition_pos);
+	ustd_t init_index = vfs->open(initsys,root);
+	if (vfs->descriptions[init_index]->type == filetypes.DIRECTORY){ shutdown(void);}               //meaning stand was>
+	exec(init_index);
+	enact_IO_context(void);
 	POST_check(void);
 	setup_gdt(void);
 	setup_idt(void);
@@ -23,9 +28,5 @@ ustd_t UefiMain(void * image_handle, void * efisystab){
 	assign_interrupt_vectors(void);
 	sti(void);
 	initialize_brothers(void);
-	Virtual_fs * vfs = get_vfs_object(void);
-	ustd_t root = vfs->mount(root_disk,root_partition_pos);
-	ustd_t init_index = vfs->open(initsys,root);
-	if (vfs->descriptions[init_index]->type == filetypes.DIRECTORY){ shutdown(void);}		//meaning stand was returned from recurse_directories, should probably log the error... somehow, though
 	routine(void);
 }
