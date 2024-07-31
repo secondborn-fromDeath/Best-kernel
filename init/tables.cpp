@@ -8,6 +8,10 @@ namespace gate_types{
 #define 0xE INTERRUPT
 #define 0xF EXCEPTION
 };
+namespace gdt_danger{
+	#define GDT_LOW_ENTRIES 256+7+get_processors_number(void)			//using this around the codebase so that i wont have to stumble around...
+};
+
 void Idescriptor_insert(uint64_t * ins, uint64_t * target, ustd_t gdt_segsel, ustd_t tss_entry, ustd_t gate_type, ustd_t privilege_level){
 	target[0] = ((ins*)<<48>>48)|((ins*)>>16<<48)|gdt_segsel<<16|tss_entry<<32|gate_type<<40|privilege_level<<45|<<47;		//no need for comments
 	target[1] = ((ins*))>>32<<32;													//top of the pointer
@@ -61,7 +65,7 @@ void gdt_insert(ustd_t type,uint64_t * ins, uint64_t * target){
 void build_tss(uint32_t * tss){
 	Kingmem * mm = get_kingmem_object(void);
 	for (ustd_t i = 9; i < 9+7*2; i+=2){			//7 interrupt stacks, qword entries for some reason
-		tss[i] = 257+get_processors_number(void)+i;
+		tss[i] = GDT_LOW_ENTRIES+i;
 	}
 	uint16_t * iopb = tss+106;
 	iopb* = iopb-tss+2;
@@ -95,7 +99,12 @@ void setup_gdt(void){
 	}
 
 	mm->gdt->length = MAX16BIT;
-	memset(mm->gdt->ckarray,1,257+processors_number);		//reserving stuffz
+	memset(mm->gdt->ckarray,1,GDT_LOW_ENTRIES);		//reserving stuffz
 
 	set_gdt(gdt,i*16);
+}
+void extract_segment_statistics(ulong_t * gdt, void ** start, ulong_t * length){
+	Kingmem * mm = get_kingmem_object(void);
+	start* = (gdt[0]<<14>>32)|(gdt[0]>>56)|(gdt[1]<<32>>32);
+	length* = (gdt[0<<12>>60])|(gdt[0]<<48>>48)|(gdt[1]>>32);
 }
