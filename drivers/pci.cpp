@@ -73,15 +73,19 @@ class PciKing : King{
 			newdev->bus = bus_number;			//NOTE OPTIMIZATION, this is unacceptable. It should be behind the conditional and then the boot-whatever should take the raw arguments
 			newdev->device = device_number*;
 			newdev->function = function;
-			newdev->devsel_timing = get_devsel_timing(processor,newdev);	//see boot_read/write
+			newdev->devsel_timing = get_devsel_timing(processor,newdev);		//see boot_read/write
 			newdev->identification = get_idinfo(processor,newdev);
-			for (ustd_t i = 0; i < devices->length; ++i){		//attempt to see wether from the back up the device is still there (through teh model id)
+			ustd_t name_counter = 0;
+			for (ustd_t i = 0; i < devices->length; ++i){				//attempt to see wether from the back up the device is still there (through teh model id)
 				if (devices->pool[i]->identification == newdev->identification){
-					vfs->pool_free(newdev,1);
+					if (devices->pool[i]->name>>32){++name_counter; continue;}
+					devices->pool[i]->name |= name_counter<<32;
+					vfs->pool_free(newdev,1);				//third line of the function
 					goto devenum_bail;
 				}
 			}
 			if !(newdev->identification == -1){				//first one that can fail AND be checkable
+				newdev->name |= name_counter<<32;
 				++this->enumerated_devices;
 				newdev->geninfo = get_geninfo(processor,newdev);
 				((ushort_t*)&newdev->irline)[0] = get_irline_and_pin(processor,bus_number,device_number*);
@@ -92,19 +96,21 @@ class PciKing : King{
 				newdev->multifunction_boo = get_multifunction_boolean(processor,newdev);
 
 				newdev -> driver = NULL;
-				for (ustd_t g = 0; g < drivgod->length; ++g){
+				for (ustd_t g = 0; g < drivgod->length; ++g){	//i love this keyword
 					fiDriv * fidriv = drivgod->pool[g];
-					if !(fidriv->d->code->check_classcode(newdev->geninfo)){	//ugly but its too long
-					if !(fidriv->d->code->attach_model(newdev))){
-						fidriv->initialize_device(newdev);			//this may enumerate the new usb/ahci/whatever bus...
+					if (fidriv->d->runtime->identification == driver_kinds::MODULE){ continue;}
+					if !(fidriv->d->code->check_classcode(newdev->geninfo)){ continue;}
+					if !(fidriv->d->code->attach_model(newdev))){ continue;}
 
-						Thread * thread = get_thread_object(void);
-						set_thread(&fidriv->runtime->children->pool[0]);
-						newdev->thread = thread(void);
-						newdev->thread->application = thread_types::DRIVER;
-						set_thread(thread);
-					}
-					break;}}
+					Thread * thread = get_thread_object(void);
+					set_thread(fidriv->runtime->children[0]);
+					newdev->thread = thread(void);			//cloning a thread for the device to have its own stack
+					newdev->thread->type = thread_types::DEVICE;
+					Thread * drivthread = get_thread_object(void);
+					drivthread->prior = thread;
+					drivthread->instruction_pointer = drivthread->parent->userspace_code + &fidriv->initialize_device;
+					run_thread(drivthread);				//this IS running in userspace but there is no way to finish booting if the driver is malicious
+					break;
 				}
 
 				if (headertype == PCI_TO_PCI_DEVICE){
@@ -115,7 +121,6 @@ class PciKing : King{
 						device_enum(processor,vfs,drivgod,bus_number,device_number,g,re);
 					}
 				}
-
 			}
 			else{vfs->pool_free(newdev,1);}
 
