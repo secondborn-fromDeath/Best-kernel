@@ -8,6 +8,7 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 		set_ipi_mode(get_selfipi_mask(void));
 		set_task_priority(0);
 		load_state(thread);
+		thread->state.accumulator = thread->sys_retval;
 		load_stack(thread);
 		if (thread->type == APPLICATION) {schedule_timed_interrupt(SCHEDULER_INTERRUPT_TIMER,EIGHT);}	//undefined and random value, see drivers/interrupts.cpp
 	}
@@ -22,6 +23,7 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 	void getnext_thread(Processor * processor){
 		ThreadsKing * tking = get_threadsking_object(void);
 		tking->stream_init(void);
+		ulong_t current_micros = gettime_nanos(void)*1000;
 		for (ustd_t i = processor->current_thread+1; i != processor->current_thread; ++i){
 			if (i == tking->length){ i = 0;}
 
@@ -39,6 +41,8 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 				__non_temporal tking->calendar = 0;
 				return;
 			}
+			if (tking->pool[i]->target_micros < current_micros){
+				continue;}
 		}
 		__non_temporal tking->calendar = 0;
 		processor->current_thread = -1;
@@ -159,6 +163,7 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 		Directory * dev = &vfs->descriptions[1];
 		register Thread * thread = dev->children->pool[(vector-64)/dev->children->count]->thread;
 		thread->prior = get_thread_object(void);
+		memcpy(thread->state.stack_pointer,get_stack_pointer(void),40);		//copying the iret payload
 		set_stack_pointer(thread->state.stack_pointer);
 		thread->instruction_pointer = dev->virt_irhandler;
 		run_thread(thread);
@@ -176,7 +181,7 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 	#define SYSRET{ LONGJUMP(&sysret)}
 	void sysret(void){
 		Thread * thread = get_thread_object(void);
-		thread->taken = 0;
+		__non_temporal thread->taken = 0;
 		if (get_thread_object(void)->type == thread_types.APPLICATION){
 			RESCHEDULE;
 		}
@@ -186,3 +191,5 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 		enter_ringzero(void);
 		RESCHEDULE;
 	}
+	#define BAD_SYSRET(thread,value){thread->sys_retval = value; SYSRET}
+	#define CONDITIONAL_SYSRET(thread,condition,value){ if(condition){ thread->sys_retval = value; SYSRET;}}
