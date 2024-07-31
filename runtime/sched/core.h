@@ -1,8 +1,7 @@
-#include <generic/types.h>
-#include <conf/processing.cfg>
-#include <other/userspace_environment.h>
-
-
+class Descriptor{
+	ustd_t findex;
+	ustd_t flags;
+};
 class process_descriptors : Hash{
 	Descriptor ** pool : Hash.pool;
 	ustd_t maximum;
@@ -16,8 +15,8 @@ class local_descriptor_table : King{
 	ustd_t segment_selector;
 };
 
-enum thread_types{ DRIVER,MODULE,THREAD,DEVICE,};	//all have different behaviour
-class Thread{
+enum thread_types{ DRIVER,MODULE,THREAD,DEVICE,KERNEL,};	//all have different behaviour
+class Thread : King{
 	Process * parent;
 	State state;			//this includes, at the start, rip,cs,rsp,ss,rflags from the tss and then also all general purpose and vectors
 	ustd_t type;
@@ -31,19 +30,27 @@ class Thread{
 	pollfd * poll;			//physical pointer to the userspace array of polling structures and their number
 	ustd_t pollnum;
 	Thread * prior;			//see ioctl
+	ulong_t target_micros;		//see sys_sleep
+
+	void stream_init(void){
+		volatile __non_temporal while (this->taken);
+
+		brothers_sleep(void);
+		__non_temporal this->taken = 255;
+		brothers_wake(void);
+        }
 };
 
-class Process{
+class Process : King{
+	Thread ** workers : King.pool;
 	user_t owner_id;
 	sig_t sigmask;
 	sig_t sigset;
 	void * pagetree;
 	void * userspace_code;		//below but virtual
 	void * code;
-	process_threads workers;
 	process_descriptors descs;
 	ustd_t polls_count;		//if this is above 20 you swap off the pagetree
-	char calendar;			//used for EVERYTHING
 	local_descriptor_table ldt;
 	void * gdt_linear;
 };
