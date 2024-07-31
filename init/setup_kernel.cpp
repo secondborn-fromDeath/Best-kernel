@@ -45,7 +45,7 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 	Kingmem mm = ctrl+sizeof(Kontrol);
 	mm* ={
 		.vm_ram_table = kerndata;
-		.phys_ram_table = map[i]->phys_start;
+		.phys_ram_table = map[i]->phys_start;	//NOTE check if real
 		.paging = 4;
 		.sizeof_ramdisk = sizeof_memory-0x100000000;	//NOTE needs porting to x86 32bit
 	};
@@ -69,7 +69,6 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 
 	Kingprocess * processking = ioapic_god + sizeof(IOapicGod);
 	Kingthread * threadking = processking + sizeof(King);
-	Kingdescriptor * descriptorsking = threadking + sizeof(King);
 	Virtual_fs * vfs = descriptorsking + sizeof(King);
 	Kingptr * pointersking = vfs + sizeof(King);
 	Kshm * shm_king = pointersking + sizeof(King);
@@ -98,10 +97,9 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 	x->pool = malloc(tosmallpage(val),pag.SMALLPAGE);	\
 	}
 	INITIALIZE_POOL_BASED_ON_CONFIG(processking);
-	INITIALIZE_POOL_BASED_ON_CONFIG(descriptorsking);
 	INITIALIZE_POOL_BASED_ON_CONFIG(threadking);
+	threadking->pool = mrealloc(threadking->pool,threadking->length*2);	//because of devices and protocol modules, this likely wont get optimized but it is less ugly i guess
 	INITIALIZE_POOL_BASED_ON_CONFIG(vfs);
-	INITIALIZE_POOL_BASED_ON_CONFIG(taskpimp);
 
 	kptr->pool = malloc(32,pag.MIDPAGE);		//pretty much "whatever" for now lol		NOTE NOTE NOTE NOTE LOOK HERE PLEASE
 	kshm->pool = malloc(32,pag.MIDPAGE);
@@ -115,25 +113,12 @@ char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservi
 	whore = 0x6D6F6473;
 	vfs->directory_constructor(vfs->descriptions[2],vfs->descriptions[0],&whore);	//mods
 
-	void * fb; uint64_t fb_length;			//putting the framebuffer under dev, separately from the video card device (becuase the windowing system wants to map it)
+	void * fb; uint64_t fb_length;
 	boot_get_framebuffer(&fb,&fb_length);
 	Storage * framebuffer = vfs->ramcontents_to_description(fb,fb_length,pag.MIDPAGE);
+	vfs->descriptions[1]->children->pool_alloc(1) = framebuffer;	//putting the anonymous description under dev
 	whore = 0x6662;		//fb
 	vfs->storage_constructor(framebuffer,vfs->descriptions[1],&whore);
-
-	/*
-	Creating the IO context, devices can be inserted without drivers but drivers cant without devices....*/
-	load_all_devices(void);
-	for (ustd_t i = data->mapsize; i; --i){
-		if (data->map->vm_pointer == driver_pointer[drivnum]){
-			//to call this in teh first olace i have to do vfs->ramcontents_to_description
-			--drivnum;
-			Storage * fdriv = vfs->ramcontents_to_description(driver_pointers[drivnum]->image_pointer,driver_pointers[drivnum]->size,pag.SMALLPAGE);	//NOTE we want the pagetype to be all done within vfs i think
-			Fdriv ** ptr = drivgod->pool_alloc(1);
-			ptr* fdriv;				//silly lol
-		}
-	}
-	load_all_devices(void);
 
 	constexpr for (ustd_t i = 0; i < syscalls::NUMBER; ++i){
 		sgod->pool[i] = syscalls[i];
