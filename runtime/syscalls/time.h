@@ -13,15 +13,20 @@ struct rtc_time{
 	uint8_t daylight;
 	uint8_t pad2;
 };
-ulong_t gettime_nanos(void){		//from the start of the day
-	Kontrol * ctrl = get_kontrol_object(void);
-	struct rtc_time rtcret;
-	uefi_wrapper(ctrl->efifuncs->getrtc,&&rtcret,1);	//NOTE lol
-	return rtcret->hour*3600*1000000000 + rtcret->minute*60*10000000000 + rtcret->second*1000000000 + rtcret->nanosecond;
-}
 void get_timespec(struct rtc_time * output){
 	Kontrol * ctrl = get_kontrol_object(void);
 	uefi_wrapper(ctrl->efifuncs->getrtc,&output,1);
+}
+ulong_t gettime_nanos(void){		//from the start of the day
+	struct rtc_time rtcret;
+	get_timespec(&rtcret);
+	return rtcret->hour*3600*1000000000 + rtcret->minute*60*10000000000 + rtcret->second*1000000000 + rtcret->nanosecond;
+}
+ulong_t gettime_epoch(void){	//returns seconds
+	struct rtc_time rtcret;
+	get_timespec(&rtcret);
+	ulong_t returned = rtcret->days*86400 + rtcret->minutes*60 + rtcret->hours->*60*60 + (rtcret->years*365+rtcret->years/4)*86400 + rtcret->months*30*86400 + rtcret->weeks*7*86400;
+	return returned;
 }
 ustd_t set_timespec(struct rtc_time * rtcinsert){	//root things
 	if (get_process_object(void)->owner_id != users.ROOT){ return 1;}
