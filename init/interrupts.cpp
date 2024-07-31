@@ -6,8 +6,7 @@ void ensure_interrupts_mode(void){
 	rdmsr(c,bottom,top);
 
 	if !(bottom & 1<<11){
-		shutdown(void);
-	}
+		shutdown(void);}
 }
 
 void assign_vector_by_irline(ustd_t irline, ustd_t vector){
@@ -30,13 +29,9 @@ void assign_vectors(void){
 	Directory * dev = get_vfs_object(void)->descriptions[get_kontrol_object(void)->dev_index];
 	IOapicGod * iogod = get_ioapic_object(void);
 
-	ustd_t up_down = 0;	//wether the previous operation rounded up or down
-	ustd_t offset = 32;
-	for (ustd_t i = 0; i < dev->numberof_children; ++i){
-		offset += (256-32)/dev->numberof_children;
-		if !(up_down){ offset += (256-32)%dev->numberof_children; ++up_down}
-		else{ up_down = 0;}
-		vectors[i] = offset;
+	ustd_t offset = 64;	//system + mine
+	for (ustd_t i = 1; i < dev->children->count+1; ++i){	//have to offset...
+		offset += (256-64)/i;
 		assign_vector_by_irline(dev->irline,offset);
 	}
 	init_timer(void);
