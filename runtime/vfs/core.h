@@ -24,7 +24,6 @@ class Virtual_fs : King{
 	void scan_partitions(void);	//returns pointers and ids into an array
 	Partlayout_driver partlay[???];
 	void insert_file(void);		//filesystem-style translator
-	Filesystem_driver fs[??];
 
 	File * pool : King.pool;
 	extern get_rand32(void) : King.get_rand(void);
@@ -43,6 +42,7 @@ class Virtual_fs : King{
 	Storage * ramcontents_to_description(void * contents, ulong_t length, ustd_t pagetype){
 		Kingmem * mm = get_kingmem_object(void);
 		Storage * newfren = this->descriptions_alloc(1);
+		if !(newfren){ return newfren;}
 		ustd_t multi = mm->get_multi_from_pagetype(pagetype);
 		ustd_t i;
 		for (i = 0; i < lenght; ++i){
@@ -59,71 +59,74 @@ class Virtual_fs : King{
 		if (page > file->shared_contents->length){ return 1;}
 		if !(file->shared_contents->pool[page]){
 			file->shared_contents->pool[page] = malloc(1,file->shared_contents->mapped_pagetype);	//NOTE HARDENING
+			if !(file->shared_contents->pool[page]){ return NULLPTR;}
 			dking->read(file->disk,file->diskpos+page*mm->get_multi_from_pagetype(file->shared_contents->mapped_pagetype),file->shared_contents->pool[page],1,file->shared_contents->mapped_pagetype);
 		}
 		return file->shared_contents->pool[page];
 	}
-	//i dont really know what is going on here
-	void recursive_insert(FS_Driver * fs, Directory * dir){
+	//cant you just be a normal person and ask for the number of directories and files under the partition in the first place?
+	void recursive_insert(DisksKing * dking, Directory * dir){
 		if (dir->type != filetypes.DIRECTORY){ return;}
 		Kingptr * kptr = get_kingpointer_object(void);
-		dir->children->pool = kptr->pool_alloc(dir->children->count);	//hardening...
-		fs->getdir_entries(dir);
+		dir->children->pool = kptr->pool_alloc(dir->children->count);
+		dking->getdir_entries(dir);
 		for (ustd_t u = 0; u < dir->children->count; ++u){
-			File * newfag = this->descriptions_alloc(1);
-			fs->load_file(dir->children->pool[u],newfag);
+			File * newfag = this->alloc(1);					//doing "weak" allocations so there is no mutex, see kontrol.h
+			File * newfag = dking->load_file(dir->children->pool[u],newfag);
 			dir->children->pool[u] = newfag;				//substituting for the vfs pointer
+			newfag->parent = dir;
 			recursive_insert(dir->children->pool[u],newfag);
 		}
 	}
-	void mount(ustd_t disk, ustd_t part){
+	void mount(ustd_t part){
 		DisksGod * dgod = get_disksgod_object(void);
-		FS_Driver * fs = dgod->disks[disk]->pool[part];		//NOTE HARDENING
+		Virtual_fs * vfs = get_vfs_object(void);
+		vfs->stream_init(void);
 
-		File * root = this->descriptions_alloc(1);
-		fs->load_file(fs->meta.diskpos,root);
-		recursive_insert(fs,root);
+		if (vfs->length-vfs->count < dgod->partitions->pool[part]->files_number){
+			__non_temporal vfs->calendar = 0;
+			return 1;
+		}
+
+		File * root = dgod->load_file(part,root);
+		recursive_insert(dgod,root);
+		__non_temporal vfs->calendar = 0;
+		return 0;
 	}
 	/*
-	All of these take indexes to directories and relative paths and return indexes to Files, userspace wrappers use the local Descriptor pool
-	*/
-	ulong_t recurse_directories(uchar_t * path, ulong_t dir, ustd_t * stand){
-		for (ustd_t g = 0; g < this->descriptions[dir]->active_cnt; ++g){
-			ulong_t attempt = this->descriptions[this->descriptions[dir]->children->pool[g]];
-			for (ustd_t i = 0; 1; ++i){
-				if ((path[i] == '/') && (this->descriptions[attempt]->meta.name[i] == 0)){
-					stand[0] = attempt;	//so that i can return the last directory that was successful
-					stand[1] = i+1;
-					ulong_t t = recurse_directories(path[i+1],attempt);
-					if (t != -1){ return t;}
-					break;	//just so something silly in fs wont affect here
+	This does filename recursion and returns the index into the filename (directory) at which it failed or something
+	on success returns 0, returns a pointer to however far was reached into the string, index returns the index into the file*/
+	enum recurse_directories_errors{ NOTA_DIR=1,NO_MATCHING_FILENAME,};
+	ulong_t recurse_directories(uchar_t * path, Directory * dir, char ** out, ustd_t * index){
+		for (ustd_t i = 0; i < dir->chidlren->length; ++i){
+			if !(dir->ckarray[i]){ continue;}
+			ustd_t bigcount = 0;
+			File * test = dir->children->pool[i];
+			for (ustd_t o = 0; path[o] == test->meta.name[o]; ++o){
+				if !(path[o]){
+					if (path[o] != test->meta.name[o]){ break;}
+					out* = &path[o];
+					index* = (test-this->descriptions)/sizeof(File);
+					return 0;
+				}else{
+					if (path[o] == '/'){
+						if (test->type != file_types::DIRECTORY){ return 1;}
+						recurse_directories(path[o+1],test,out);
+					}
 				}
-				if (path[i] != this->descriptions[attempt]->meta.name[i]){ break;}
-				if !(path[i]){ return attempt;}	//success
 			}
 		}
-		return -1;	//fail D:
+		return 2;
 	}
-
-	ulong_t open(uchar_t * path, ulong_t dir_index, ustd_t flags){	//can do mkfile from here, compressing because it is one check anyway and we do disksync
-		void * desc_ptr = this->descriptions;
-		ulong_t stand[2];
-		ustd_t ret = recurse_directories(path,dir_index,stand);
-		if (ret){ return ret;}
-		else{
-			if (flags & O_CREATE){
-				File temp ={
-					.meta.type = RAM_STORAGE;
-					.meta.mode = 		//NOTE you have to figure this out later down the line
-					.access_flag = 0;
-					.contents = NULL;
-					.length = 0;
-				};
-				for (ustd_t i = 0; path[stand[1]]; ++i){temp.name[i] = path[stand[1+i]];}
-				return description_alloc(&temp);
-			}
-		}
-		return stand[0];
+	/*
+	This returns the index into however deep we managed to go into the path (and tells you about that too...)*/
+	enum open_flags{ O_CREAT,};
+	ulong_t open(uchar_t * path, ulong_t dir_index, ustd_t * strlen_ret, ustd_t * index_ret){	//can do mkfile from here, compressing because it is one check anyway and we do disksync
+		if !(this->ckarray[dir_index]){ return 1;}
+		char * lil;
+		ustd_t p = recurse_directories(path,&this->pool[dir_index],&lil,index_ret);
+		strlen_ret* = lil-path;
+		return p;
 	}
 	//reading files directly from disk, if you dont like it you can go and call mmap
 	ustd_t read(ulong_t index, void * buf, ulong_t amount, ulong_t offset){
@@ -139,10 +142,6 @@ class Virtual_fs : King{
 		}
 	}
 	ustd_t write(ulong_t index, void * buf, ulong_t amount, offset){
-		if (index == get_kontrol_object(void)->framebuffer_index){
-			ps2_enable_device(MOUSE);
-			ps2_enable_device(KEYBOARD);
-		}
 		Storage * file = &this->descriptions[index];
 		if (offset > file->meta.length){ return 4;}
 		switch (file->type){
@@ -187,46 +186,51 @@ class memfile : Hash{
 	char * listeners : Hash.ckarray;
 	ustd_t mapped_pagetype;
 };
+class Swapfile : memfile{	//partitions
+	ustd_t disk;
+	ustd_t partition;
+};
 
 class meta{
-	uchar_t * name;		//null-ending string btw
+	uchar_t name[64]		//null-ending string, if you need more, you dont
 	ustd_t type;
-	ustd_t mode;
-	ulong_t length;		//length on disk in smallpages
-	ustd_t disk;
-	ondisk_t diskpos;
+	ustd_t mode;			//syntax is 1 == root only, 0 == all, from MSB to LSB:		0,0,0,0,0,0,writing,reading,
 };
 
 class File{
 	meta data;
 	File * parent;
+	File ** double_link;				//to do parent->children->pool_free()
 
 	union{
 	//type==DEVICE
 	struct{
+		ulong_t kind;				//string indicating the type of device, assigned by the drivers and is meant for use by the subsystem modules
+		union{
+			ulong_t name;			//something conjured up by the kernel so that IO operations dont rely on breakable indexes
+			ustd_t identification;		//oem low, devid high, because the process ends up being the same anyway
+		};
+		ustd_t geninfo;				//class code...
 		uchar_t bus;
 		uchar_t device;
 		uchar_t irline;
 		uchar_t irpin;
-		ustd_t geninfo;			//class code...
-		ushort_t identification;	//oem low, devid high, because the process ends up being the same anyway
-		uchar_t ranges_mask;		//IO space / memory bit
+		uchar_t ranges_mask;			//IO space / memory bit
 		uchar_t multifunction_boo;
-		ulong_t bases[6];		//64bit prefetchables in pcibridge...
-		ulong_t lengths[6];		//they are not going to need more than that.
-		char types[6];			//0 is uncacheable memory, 1 is serial ports and 2 is prefetcheable memory
-		ustd_t expansion_rom;		//holy shit its mikerkode
-		char * ACPI_definition;		//honestly, acpi_definition needs to be a big class because of how things actually work (poll_status... pwr... whatever you want), this is a placeholder
+		ulong_t bases[6];			//64bit prefetchables in pcibridge...
+		ulong_t lengths[6];			//they are not going to need more than that.
+		char types[6];				//0 is uncacheable memory, 1 is serial ports and 2 is prefetcheable memory
+		ustd_t expansion_rom;			//holy shit its mikerkode
+		char * ACPI_definition;			//honestly, acpi_definition needs to be a big class because of how things actually work (poll_status... pwr... whatever you want), this is a placeholder
 		Thread * thread;
-		void * virt_irhandler;
 		Driver * driver;
-		ustd_t maxfunc;			//max function number under ioctl
-		King mut;
+		void * virt_irhandler;
 	};
 	struct{
 		union{
 		//...
 		struct{
+			ustd_t partition;		//filesystem type...
 			union{
 				//type==DIRECTORY
 				struct{
@@ -237,6 +241,7 @@ class File{
 					union{
 						//type==STORAGE
 						struct{
+							ustd_t listeners;		//what stops the unmounting
 							memfile mem;
 							ustd_t pending_sync;
 						};
