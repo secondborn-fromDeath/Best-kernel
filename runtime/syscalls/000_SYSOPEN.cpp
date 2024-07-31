@@ -1,5 +1,5 @@
 //this wraps vfs->open with the process descriptors stuff
-volatile void SYSOPEN(char * name, ustd_t dir_descriptor, ustd_t flags, ustd_t * strlen, ustd_t * index){
+void SYSOPEN(char * name, ustd_t dir_descriptor, ustd_t flags, ustd_t * strlen, ustd_t * index){
 	Thread * thread = get_thread_object(void);
 	Process * process = thread->parent;
 	Virtual_fs * vfs = get_vfs_object(void);
