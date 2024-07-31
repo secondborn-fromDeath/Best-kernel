@@ -204,13 +204,19 @@ class IOapic{
 	ustd_t get_exselfipi_mask(void){
 		return 1<<14 | 1<<15 | 3<<18;		//all excluding self
 	}
-	void set_ipi_mode(ustd_t mask){
+	ustd_t get_startupmode_mask(void){
+		return 6<<8;
+	}
+	ustd_t get_fixedmode_mask(void){
+		return 0;
+	}
+	void set_ipi_lowreg(ustd_t mask){
 		ushort_t * lapic = get_lapic_pointer(void);
 		lapic[0x302/2] = mask>>16;		//writing to the high word
 		((char *)lapic)[0x301] = mask<<16>>24;	//writing to the second byte		low byte causes IPI to be sent...
 	}
 
-	void poke_brother(ustd_t brother_id, uchar_t action){
+	void poke_brother(ustd_t brother_id, ustd_t action){
 		ustd_t * lapic = get_lapic_pointer(void);
 		lapic[0x310/4] = brother_id<<56;
 		lapic[0x300/4] = get_targetipi_mask(void) | action;
@@ -218,12 +224,15 @@ class IOapic{
 	#define wake_brother(brother_id){ poke_brother(brother_id,ints.WAKE)}
 	#define sleep_brother(brother_id){ poke_brother(brother_id,ints.SLEEP)}
 
-	void brothers_poke(uchar_t action){
+	void brothers_poke(ustd_t action){
 		ustd_t * lapic = get_lapic_pointer(void);
 		lapic[0x300/4] = get_exselfipi_mask(void) | action;
 	}
 	#define wake_brothers(void){ brothers_poke(ints.WAKE)}
 	#define sleep_brother(void){ brothers_poke(ints.SLEEP)}
+
+	#define brothers_init(void){
+		 set_ipi_mode()brothers_poke()
 
 	void family_poke(ustd_t interrupt){
 		ustd_t * lapic = get_lapic_pointer(void);
