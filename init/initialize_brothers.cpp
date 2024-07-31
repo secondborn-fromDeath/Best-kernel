@@ -21,7 +21,7 @@ void prepare_controls(void){
 	:::);
 	halt(void);
 }
-void first_sipi(void){
+void sipi(void){
 	processor_init(void);	//does cli() internally
 	sti(void);
 	prepare_controls(void);
@@ -90,13 +90,16 @@ void serve_data(void){
 	local_apic[0x280/4] = get_kontrol_object(void);				//DANGER dont change things around in kernlib
 	ustd_t APid;
 	__asm__ volatile("MOVq	%%cr15,%%rax\n\t" ::"r"(APid):);
-	poke_brother(APid,OS_INTERRUPTS::NOTIFY_DATA);
+	brothers_poke(APid,OS_INTERRUPTS::NOTIFY_DATA);
 	halt(void);
 }
 //THE ROUTINE:
 void initialize_brothers(void){
 	ushort_t bsp_id = get_processor_id(void);
 	bsp_id = rotateRight((char)(bsp_id<<4),4);		//now the low 4 bits are 0-3, the high 4 are 8-11...
+
+	ustd_t mask = get_startupmode_mask(void) | OS_INTERRUPTS::SLEEP;	//doing some weird battery bus shit
+	brothers_poke(mask);
 
 	for (ustd_t i = 0; i < bsp_id; ++i){
 		__asm__ volatile("MOVq	%%rax,%%cr15\n\t" ::"r"(i):);
@@ -106,7 +109,7 @@ void initialize_brothers(void){
 		schedule_timed_interrupt(4096,1);
 		rotateRight(bsp_id,8);
 		poke_brother(i,32+((char)bsp_id));
-		halt(void);				//NOTE might want to stay awake and read error codes
+		halt(void);					//NOTE might want to stay awake and read error codes
 		rotateLeft(bsp_id,8);
 	}
 }
