@@ -230,10 +230,6 @@ class IOapic{
 	}
 	#define wake_brothers(void){ brothers_poke(ints::WAKE)}
 	#define sleep_brother(void){ brothers_poke(ints::SLEEP)}
-
-	#define brothers_init(void){	\
-		brothers_poke(ints::STARTUP);	\
-	}	\
 	#define brothers_sleep(void){	\
 		brothers_poke(ints::HIGHPRIO_SLEEP);	\
 	}	\
