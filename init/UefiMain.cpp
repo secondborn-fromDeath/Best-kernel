@@ -18,17 +18,17 @@ ustd_t UefiMain(void * image_handle, void * efisystab){
 	image_loaded * info_pointers[drivers_number];
 	efimap_returns mapdata;
 	get_uefi_memmap(image_handle,efisystab,&mapdata,boottab);
-	char * initsys = setup_kernel(efisystab,boottab,&mapdata,driver_pointers,drivers_number);		//from here on out you can use the kernel memory allocation functions
+	char * initsys = setup_kernel(efisystab,boottab,&mapdata);		//from here on out you can use the kernel memory allocation functions
 	POST_check(void);
-	ustd_t len, init_index;
-	vfs->open(initsys,0,&len,&index);
-	exec(init_index);
 	enact_IO_context(driver_pointers,mapdata);
 	setup_gdt(void);
 	setup_idt(void);
+	ustd_t len, init_index;
+	vfs->open(initsys,0,&len,&index);
+	exec(init_index);
 	ustd_t root = vfs->mount(root_disk,root_partition_pos);
 	exit_bootservices(mapdata->mapkey,boottab);
-	assign_interrupt_vectors(void);
+	assign_interrupt_vectors(void);						//inside here we are initializing gdt vectors by the way
 	sti(void);
 	initialize_brothers(void);
 	routine(void);
