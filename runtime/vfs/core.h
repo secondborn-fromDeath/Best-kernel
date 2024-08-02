@@ -121,16 +121,15 @@ class Virtual_fs : King{
 	/*
 	This returns the index into however deep we managed to go into the path (and tells you about that too...)*/
 	enum open_flags{ O_CREAT,};
-	ulong_t open(uchar_t * path, ulong_t dir_index, ustd_t * strlen_ret, ustd_t * index_ret){	//can do mkfile from here, compressing because it is one check anyway and we do disksync
-		if !(this->ckarray[dir_index]){ return 1;}
+	File * open(uchar_t * path, ulong_t dir_index, ustd_t * strlen_ret, ustd_t * index_ret){	//can do mkfile from here, compressing because it is one check anyway and we do disksync
+		if !(this->ckarray[dir_index]){ return NULLPTR;}
 		char * lil;
 		ustd_t p = recurse_directories(path,&this->pool[dir_index],&lil,index_ret);
 		strlen_ret* = lil-path;
-		return p;
+		return &vfs->descriptions[p];
 	}
 	//reading files directly from disk, if you dont like it you can go and call mmap
-	ustd_t read(ulong_t index, void * buf, ulong_t amount, ulong_t offset){
-		Storage * file = &vfs->descriptions[index];
+	ustd_t read(Storage * file, void * buf, ulong_t amount, ulong_t offset){
 		if (offset > file->meta.length){ return 4;}
 		switch (file->type){
 			case DIRECTORY:{ return 1;}
@@ -141,8 +140,7 @@ class Virtual_fs : King{
 			return 0;}
 		}
 	}
-	ustd_t write(ulong_t index, void * buf, ulong_t amount, offset){
-		Storage * file = &this->descriptions[index];
+	ustd_t write(Storage * file, void * buf, ulong_t amount, offset){
 		if (offset > file->meta.length){ return 4;}
 		switch (file->type){
 			case DIRECTORY:{ return 1;}
@@ -153,12 +151,10 @@ class Virtual_fs : King{
 			return 0;}
 		}
 	}
-	ulong_t close(ulong_t index);				//TODO removes the descriptor from the process' pool	reminder to not do silly shrinkage shit
 
 	/*
-	See the File object for the way i do listeners to files
-	*/
-	void writeback_cycle(Virtual_fs * vfs,){
+	See the File object for the way i do listeners to files	*/
+	void writeback_cycle(void){
 		DisksKing * dking = get_disksking_object(void);
 		for (ustd_t i = 0; i < this->length; ++i){
 			if (this->ckarray[i]){
@@ -191,16 +187,19 @@ class Swapfile : memfile{	//partitions
 	ustd_t partition;
 };
 
+enum permissions{ READ=1,WRITE,};
 class meta{
 	uchar_t name[64]		//null-ending string, if you need more, you dont
 	ustd_t type;
 	ustd_t mode;			//syntax is 1 == root only, 0 == all, from MSB to LSB:		0,0,0,0,0,0,writing,reading,
+	ulong_t length;			//in bytes
 };
 
 class File{
 	meta data;
 	File * parent;
 	File ** double_link;				//to do parent->children->pool_free()
+	char present;
 
 	union{
 	//type==DEVICE
@@ -224,7 +223,7 @@ class File{
 		char * ACPI_definition;			//honestly, acpi_definition needs to be a big class because of how things actually work (poll_status... pwr... whatever you want), this is a placeholder
 		Thread * thread;
 		Driver * driver;
-		void * virt_irhandler;
+		auto * virt_irhandler;
 	};
 	struct{
 		union{
@@ -266,7 +265,7 @@ class KingSwap : File;
 class fiDriv : File;
 
 class Descriptor{
-	ulong_t desc_index;
+	ulong_t findex;
 	ustd_t polled;
 	ustd_t flags;		//the first bit of flags indicates a file mapping if set
 };
