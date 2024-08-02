@@ -221,19 +221,22 @@ class IOapic{
 		lapic[0x310/4] = brother_id<<56;
 		lapic[0x300/4] = get_targetipi_mask(void) | action;
 	}
-	#define wake_brother(brother_id){ poke_brother(brother_id,ints.WAKE)}
-	#define sleep_brother(brother_id){ poke_brother(brother_id,ints.SLEEP)}
+	#define wake_brother(brother_id){ poke_brother(brother_id,ints::WAKE)}
+	#define sleep_brother(brother_id){ poke_brother(brother_id,ints::SLEEP)}
 
 	void brothers_poke(ustd_t action){
 		ustd_t * lapic = get_lapic_pointer(void);
 		lapic[0x300/4] = get_exselfipi_mask(void) | action;
 	}
-	#define wake_brothers(void){ brothers_poke(ints.WAKE)}
-	#define sleep_brother(void){ brothers_poke(ints.SLEEP)}
+	#define wake_brothers(void){ brothers_poke(ints::WAKE)}
+	#define sleep_brother(void){ brothers_poke(ints::SLEEP)}
 
-	#define brothers_init(void){
-		 set_ipi_mode()brothers_poke()
-
+	#define brothers_init(void){	\
+		brothers_poke(ints::STARTUP);	\
+	}	\
+	#define brothers_sleep(void){	\
+		brothers_poke(ints::HIGHPRIO_SLEEP);	\
+	}	\
 	void family_poke(ustd_t interrupt){
 		ustd_t * lapic = get_lapic_pointer(void);
 		lapic[0x300/4] = get_allipi_mask(void) | interrupt;
@@ -255,6 +258,7 @@ class IOapic{
 		"HLT\n\t"
 		);
 	}
+	void highprio_halt(void);
 	void wake(void){
 		__asm__ volatile(
 		"MOVq	%%cr12,%%rax\n\t"
