@@ -12,36 +12,21 @@ class Kontrol{
 	ushort_t shutdown_port;			//port number that triggers shutdown SMI
 	ustd_t device_directory_index;		//into vfs
 	void * gdt;
-	void * framebuffer;
-	uint64_t framebuffer_size;
+	File * framebuffer;
 };
 class ACPI_driver;
 
-enum hashtypes{ POINTER,DOUBLE_POINTER,};
-class King : Hash{
-	uchar_t calendar;
 
+
+enum hashtypes{ POINTER,DOUBLE_POINTER,};
+class Hash{
 	ustd_t type;
 	ustd_t length;		//total length
 	ustd_t count;		//currently occupied slots
 	uchar_t * ckarray;
 	auto * pool;
 
-	/*
-	NOTE in case you are ever in an architecture without the "send to everyone but me" option you can send the interrupt to the highest processor
-	which will then send things cascading down, receivers interrupt, unwind the stack, check if they were executing something within the protected range
-	of the mutex and then go back to doing their thing
-	*/
-	ustd_t stream_init(void){
-		volatile __non_temporal while (this->calendar);
-
-		brothers_sleep(void);
-		__non_temporal this->calendar = 255;
-		brothers_wake(void);
-	}
-
-	auto * pool_alloc(ustd_t reqlen){
-		this->stream_init(void);
+	auto * alloc(ustd_t intense, ustd_t reqlen){
 		ustd_t g = 0;
 		ustd_t i = 0;
 		auto * ret;
@@ -62,18 +47,16 @@ class King : Hash{
 				this->length += reqlen;
 			}
 		}
-		__non_temporal this->calendar = 0;
 		return NULLPTR;
 	}
-	void pool_free(void * section, ustd_t length){
+	void free(void * section, ustd_t length){
 		for (ustd_t g = (section - this->pool)/sizeof(this->pool*); g < length; ++g){ this->ckarray[g] = 0;}
 		this->count -= length;
+		memset(section,0,length*sizeof(this->pool*));
 	}
-	auto * pool_realloc(void * section, ustd_t prevlen, ustd_t newlen){
+	auto * realloc(ustd_t intense, void * section, ustd_t prevlen, ustd_t newlen){
 		Kshm * shm = get_shm_object(void);
-		shm->stream_init(void);
-		void * backup = shm->pool_alloc(sizeof(this->pool*)*prevlen/4096+1);
-		__non_temporal shm->calendar = 0;					//safe pipe
+		void * backup = shm->strong_alloc(sizeof(this->pool*)*prevlen/4096+1);
 		if !(backup){ return NULLPTR;}
 		memcpy(backup,section,sizeof(this->pool*)*prevlen);
 		this->pool_free(section,prevlen);
@@ -82,11 +65,48 @@ class King : Hash{
 		shm->free(backup,sizeof(this->pool*)*prevlen/4096+1);
 		return ret;
 	}
+	auto suicide(void){		//double-pointer only.
+		Kingptr * kptr = gte_kingpointer_object(void);
+		for (ustd_T i = 0; i < this->length; ++i){
+			kptr->pool_free(this->pool[i]);
+		}
+	}
 };
 
-#define (x)(y)segment_alloc(size){	\
-	(xypool_alloc(size)-xypool)/sizeof(xypool*)	\
-}
+class King : Hash{
+	uchar_t calendar;
+
+	/*
+	NOTE in case you are ever in an architecture without the "send to everyone but me" option you can send the interrupt to the highest processor
+	which will then send things cascading down, receivers interrupt, unwind the stack, check if they were executing something within the protected range
+	of the mutex and then go back to doing their thing
+	*/
+	void stream_init(void){
+		volatile __non_temporal while (this->calendar);
+
+		brothers_sleep(void);
+		__non_temporal this->calendar = 255;
+		brothers_wake(void);
+	}
+
+	auto * pool_alloc(ustd_t reqlen){
+		this->stream_init(void);
+		ustd_t ret = Hash::pool_alloc(reqlen);
+		__non_temporal this->calendar = 0;
+		return ret;
+	}
+	auto * pool_realloc(void * section, ustd_t prevlen, ustd_t newlen){
+		this->stream_init(void);
+		ustd_t ret = Hash::pool_realloc(section,prevlen,newlen);
+		__non_temporal this->calendar = 0;
+		return ret;
+	}
+};
+class metaking : King{ King ** pool : King.pool;};
+
+
+
+
 class LDT : King{ struct{ uint64_t[2];} * pool : King.pool;
 	ustd_t gdt_index;		//otherwise you need sorting ON THE TRANSLATIONS
 };
@@ -106,11 +126,14 @@ class Kingmem{
 	ulong_t used_memory;	//as the ratio of total memory to this decreases you are going to swap more aggressively, starting from 50% used
 };
 class Kingprocess : King{ Process * pool : King.pool;}
-class Kingthread : King{ Thread * pool : King.pool;}
-class Kingdescriptor : King{ Descriptor * pool : King.pool;}
+class Kingthread : King{ Thread * pool : King.pool;};
 class Virtual_fs : King{ File * descriptions : King.pool;}
 class Kingptr : King{ auto ** pool : King.pool;}
 class Kshm : King{ struct pag{ uchar_t [4096];} * pool : King.pool;}	//needed for things like realloc		also base for Swap
 class DriversGod : King{ fiDriv ** pool : King.pool;}
-class DriverProcessGod : King{ Runtime_driver * pool : King.pool;}	//this keeps them all
-class Taskpimp : Kingthread;
+class ModulesGod : DriversGod;
+class SyscallsGod{ auto ** functions;}					//these both get dereferenced by templaters
+class InterruptsGod{ auto ** functions;}
+class Module_removal_stack : King{
+	File * pool : King.pool;
+};
