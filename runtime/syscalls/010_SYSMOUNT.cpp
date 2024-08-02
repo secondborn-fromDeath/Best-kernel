@@ -3,6 +3,8 @@ void SYSMOUNT(char * partition){
 	Thread * thread = get_thread_object(void);
 	Kingmem * mm = get_kingmem_object(void);
 
+	CONDITIONAL_SYSRET(thread,process->owner_id != owner_ids::ROOT,1);
+
 	auto * truepart = mm->vmto_phys(process->pagetree,part);
 	ustd_t len;
 	ustd_t findex;
