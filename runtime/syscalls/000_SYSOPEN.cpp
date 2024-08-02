@@ -7,7 +7,6 @@ void SYSOPEN(char * name, ustd_t dir_descriptor, ustd_t flags, ustd_t * strlen, 
 
 	CONDITIONAL_SYSRET(thread,(!(process->descs->count > dir_descriptor)||(process->descs->ckarray[dir_descriptor] == 0)),-1);
 
-
 	char * truename = mm->vmto_phys(process->pagetree,name);
 	ustd_t * truestrlen = mm->vmto_phys(process->pagetree,strlen);
 	ustd_t * trueindex = mm->vmto_phys(process->pagetree,index);
