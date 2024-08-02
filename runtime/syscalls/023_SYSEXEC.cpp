@@ -35,14 +35,11 @@ NOTE DANGER MOST IMPORTANT PLEASE READ IT FUCK!
 #define CONDITIONAL_BLOOD_LIBEL(condition){ if (condition){ BLOOD_LIBEL(void);}
 
 //returns the index into the processes array
-ulong_t exec(ustd_t findex){
+ulong_t exec(File * source){
 	Kingmem * mm = get_kingmem_object(void);
 	Virtual_fs * vfs = get_vfs_object(void);
 	DisksKing * dking = get_disksking_object(void);
 
-	if !(vfs->ckarray[findex]){ return -1;}
-
-	Storage * source = &vfs->descriptions[findex];
 	Exec_header * header = vfs->load_page(dking,source,0);
 
 	EXEC_CHECK_CHECKSUM{
@@ -56,7 +53,7 @@ ulong_t exec(ustd_t findex){
 
 	//loading the rest of the file
 	ustd_t multi = mm->get_multi_from_pagetype(source->mapped_pagetype);
-	for (ustd_t i = 1; i < vfs->descriptions[findex].meta.length; ++i){
+	for (ustd_t i = 1; i < source->meta.length; ++i){
 		 CONDITIONAL_BLOOD_LIBEL(vfs->load_page(dking,source,i) == 0);
 	}
 
@@ -113,7 +110,7 @@ ulong_t exec(ustd_t findex){
 
 	//identity mapping the gdt
 	ulong_t * entry = mm->vmto_entry(process->pagetree,mm->gdt->pool,&pagetype);
-	for (ustd_t g = 0; g < vfs->descriptions[findex].meta.length; ++g){
+	for (ustd_t g = 0; g < source->meta.length; ++g){
 		entry[g] = mm->memreq_template(pag.SMALLPAGE,mode.MAP,cache.WRITEBACK,1) | mm->gdt->pool+4096*g;
 		entry[g] ^= 1<<2;		//setting pages as supervisor only
 	}
@@ -147,8 +144,8 @@ ulong_t exec(ustd_t findex){
 	main_thread->state->instruction_pointer = header->start + entry;
 	ustd_t pagetype;
 	ulong_t * entry = mm->vmto_entry(process->pagetree,process->userspace_code,&pagetype);
-	for (ustd_t g = 0; g < vfs->descriptions[findex].meta.length; ++g){
-		entry[g] = mm->memreq_template(pagetype,mode.MAP,cache.WRITEBACK,1) | vfs->descriptions[findex]->shared_contents->pool[g]<<12;
+	for (ustd_t g = 0; g < source->meta.length; ++g){
+		entry[g] = mm->memreq_template(pagetype,mode.MAP,cache.WRITEBACK,1) | source->shared_contents->pool[g]<<12;
 		entry[g] |= 1<<63;		//setting pages as executable
 	}
 
@@ -180,6 +177,10 @@ void SYS_EXEC(ustd_t desc){
 	Process * process = thread->father;
 	CONDITIONAL_SYSRET(thread,((desc > process->descs->length)||(process->ckarray[descs] == 0)),1);
 
-	thread->sys_retval = exec(process->descs->pool[desc]->findex);
+	Virtual_fs * vfs = get_vfs_object(void);
+	File * file = &vfs->descriptions[process->descs->pool[desc]->findex];
+	CONDITIONAL_SYSRET(thread,(!(file->meta.mode & (permissions::READ|permissions::WRITE))||(process->owner_id == owner_ids::ROOT),1);	//valid lisp lmao
+
+	thread->sys_retval = exec(file);
 	SYSRET;
 }
