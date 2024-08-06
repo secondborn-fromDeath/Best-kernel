@@ -10,7 +10,7 @@ void reenact_io(void){
 			continue;}
 		dev->children->pool[i]->stream_init(NUH);
 	}
-	brothers_sleep(NUH);								//high priority, halting all brothers
+	highprio_brothers_sleep(NUH);
 	for (ustd_t i = 0; i < modrm_sp->length; ++i){					//removing all of the scheduler drivers
 		if !(modrm_sp->ckarray[i]){
 			continue;}
