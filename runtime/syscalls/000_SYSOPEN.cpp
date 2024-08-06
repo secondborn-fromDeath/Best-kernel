@@ -28,11 +28,14 @@ void SYSOPEN(char * name, ustd_t dir_descriptor, ustd_t flags, ustd_t * strlen, 
 			else{ type = file_types::STORAGE;}
 			file* ={
 				.meta.type = type,
-				.meta.mode = //NOTE NOTE
+				.meta.mode = 0,
 				.meta.length = 0,
 				.disk = dir->meta.disk,
 				.diskpos = 0,
 			};
+			if (process->owner_id == owner_ids:: ROOT){
+				file->meta.mode = 3;			//setting readable and writable only by root
+			}
 			string_copy(&file->name,truename+truestrlen);
 			thread->sys_retval = 0;
 		}
