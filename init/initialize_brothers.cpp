@@ -5,8 +5,8 @@ Control register reference because it is needed:Ã
 13:	ringzero pagetree
 5:	information pass, boot
 9:	information count, boot
-15:	used by bsp for the APid in serve_data()*/
-
+15:	used by bsp for the APid in serve_data()
+12,14:	store_state()*/
 
 
 
