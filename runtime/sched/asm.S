@@ -1,5 +1,5 @@
 #these are to be called by functions in sched.cpp
-
+#NOTE, gets parsed by a prepreprocessor with sched/core.h as input
 
 store_state:#							this not preserving C callconv is fine (compiler wasting push and pop instructions is whatever srsly)
 MOVQ	%%rsp,%%cr14
