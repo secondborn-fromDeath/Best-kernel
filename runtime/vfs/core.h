@@ -21,67 +21,62 @@ enum filetypes{
 };
 
 class Virtual_fs : King{
-	void scan_partitions(void);	//returns pointers and ids into an array
-	Partlayout_driver partlay[???];
-	void insert_file(void);		//filesystem-style translator
+	File * descriptions : King.pool;
 
-	File * pool : King.pool;
-	extern get_rand32(void) : King.get_rand(void);
-
-
-
-	void template_constructor(File * newfile, File * parent, char * name, ustd_t type){
-		parent->children->pool_alloc(1) = newfile;
-		strcpy(&newfile->meta.name,name);
-		newfile->meta.type = type;
+	void template_constructor(File * target, File * parent, char * name, ustd_t type){
+		strcpy(&target->meta.name,name);
+		target->meta.type = type;
+		target->parent = parent;
 	}
 	#define storage_constructor(a,b,c){ template_constructor(a,b,c,filetypes.STORAGE)}
 	#define directory_constructor(a,b,c){ template_constructor(a,b,c,filetypes.DIRECTORY); a->children->length = 0; a->children->count = 0; a->children->pool = 0}
 
 	//NOTE unindexable description
 	Storage * ramcontents_to_description(void * contents, ulong_t length, ustd_t pagetype){
-		Kingmem * mm = get_kingmem_object(void);
-		Storage * newfren = this->descriptions_alloc(1);
+		Kingmem * mm = get_kingmem_object(NUH);
+		Storage * newfren = this->poolalloc(1);
 		if !(newfren){ return newfren;}
 		ustd_t multi = mm->get_multi_from_pagetype(pagetype);
 		ustd_t i;
 		for (i = 0; i < lenght; ++i){
-			newfren->shared_contents->pool[i] = contents+i*multi;
+			newfren->mem->pool[i] = contents+i*multi;
 		}
-		newfren->shared_contents->mapped_pagetype = pagetype;
-		newfren->meta.length = (newfren->shared_contents->pool[i] - contents)*(multi/4096);
+		newfren->mem->mapped_pagetype = pagetype;
+		newfren->meta.length = (newfren->mem->pool[i] - contents)*(multi/4096);
 		return newfren;
 	}
 
 	//loads a page of a file on disk if it is even needed
 	void * load_page(DisksGod * dking, Storage * file, ustd_t page){
-		Kingmem * mm = get_kingmem_object(void);
-		if (page > file->shared_contents->length){ return 1;}
-		if !(file->shared_contents->pool[page]){
-			file->shared_contents->pool[page] = malloc(1,file->shared_contents->mapped_pagetype);	//NOTE HARDENING
-			if !(file->shared_contents->pool[page]){ return NULLPTR;}
-			dking->read(file->disk,file->diskpos+page*mm->get_multi_from_pagetype(file->shared_contents->mapped_pagetype),file->shared_contents->pool[page],1,file->shared_contents->mapped_pagetype);
+		Kingmem * mm = get_kingmem_object(NUH);
+		if (page > file->mem->length){ return 1;}
+		if !(file->mem->pool[page]){
+			ustd_t pagetype = file->mem->mapped_pagetype;;
+			file->mem->pool[page] = malloc(1,pagetype);
+			if !(file->mem->pool[page]){ return NULLPTR;}
+			dking->read(file->disk,page*mm->get_multi_from_pagetype(pagetype),file->mem->pool[page],1,pagetype);
 		}
-		return file->shared_contents->pool[page];
+		return file->mem->pool[page];
 	}
 	//cant you just be a normal person and ask for the number of directories and files under the partition in the first place?
 	void recursive_insert(DisksKing * dking, Directory * dir){
 		if (dir->type != filetypes.DIRECTORY){ return;}
-		Kingptr * kptr = get_kingpointer_object(void);
+		Kingptr * kptr = get_kingpointer_object(NUH);
 		dir->children->pool = kptr->pool_alloc(dir->children->count);
 		dking->getdir_entries(dir);
 		for (ustd_t u = 0; u < dir->children->count; ++u){
 			File * newfag = this->alloc(1);					//doing "weak" allocations so there is no mutex, see kontrol.h
 			File * newfag = dking->load_file(dir->children->pool[u],newfag);
+			newfag->partition = parent->partition;
 			dir->children->pool[u] = newfag;				//substituting for the vfs pointer
 			newfag->parent = dir;
 			recursive_insert(dir->children->pool[u],newfag);
 		}
 	}
 	void mount(ustd_t part){
-		DisksGod * dgod = get_disksgod_object(void);
-		Virtual_fs * vfs = get_vfs_object(void);
-		vfs->stream_init(void);
+		DisksGod * dgod = get_disksgod_object(NUH);
+		Virtual_fs * vfs = get_vfs_object(NUH);
+		vfs->stream_init(NUH);
 
 		if (vfs->length-vfs->count < dgod->partitions->pool[part]->files_number){
 			__non_temporal vfs->calendar = 0;
@@ -89,6 +84,7 @@ class Virtual_fs : King{
 		}
 
 		File * root = dgod->load_file(part,root);
+		root->partition = part;
 		recursive_insert(dgod,root);
 		__non_temporal vfs->calendar = 0;
 		return 0;
@@ -130,13 +126,13 @@ class Virtual_fs : King{
 	}
 	//reading files directly from disk, if you dont like it you can go and call mmap
 	ustd_t read(Storage * file, void * buf, ulong_t amount, ulong_t offset){
-		if (offset > file->meta.length){ return 4;}
+		if (offset > file->meta.length){ return 3;}
 		switch (file->type){
 			case DIRECTORY:{ return 1;}
 			case DEVICE:{ return 2;}
 			default:{
-				DisksKing * dking = get_disksking_object(void);
-				dking->read(file->disk,file->diskpos+offset,buf,amount);
+				DisksKing * dking = get_disksking_object(NUH);
+				dking->read(file->partition,file->reloff+offset,buf,amount);
 			return 0;}
 		}
 	}
@@ -146,8 +142,8 @@ class Virtual_fs : King{
 			case DIRECTORY:{ return 1;}
 			case DEVICE:{ return 2;}		//NOTE reminder to not make the framebuffer a device structure
 			default:{
-				DisksKing * dking = get_disksking_object(void);
-				dking->write(file->disk,file->diskpos+offset,buf,amount);	//reminder disk 0 is MEMORY
+				DisksKing * dking = get_disksking_object(NUH);
+				dking->write(file->partition,file->reloff+offset,buf,amount);
 			return 0;}
 		}
 	}
@@ -155,19 +151,20 @@ class Virtual_fs : King{
 	/*
 	See the File object for the way i do listeners to files	*/
 	void writeback_cycle(void){
-		DisksKing * dking = get_disksking_object(void);
+		DisksKing * dking = get_disksking_object(NUH);
 		for (ustd_t i = 0; i < this->length; ++i){
 			if (this->ckarray[i]){
-				Kingmem * mm = get_kingmem_pbject(void);
+				Kingmem * mm = get_kingmem_pbject(NUH);
 				File * file = &this->descriptions[i];
-				ustd_t filemulti = mm->get_multi_from_pagetype(file->shared_contents->mapped_pagetype);
+				ustd_t filemulti = mm->get_multi_from_pagetype(file->mem->mapped_pagetype);
 				ustd_t closedyet = 0;	//we sync to disk when no listeners are present and a pending sync is on
+				ustd_t pagetype = file->mem->mapped_pagetype;
 				for (ustd_t h = 0; h < file->pages_count; ++h){
 					if !(file->listeners[h]){
-						dking->write(file->disk,file->diskpos+filemulti*h,file->shared_contents->pool[h],filemulti);
-						Kingmem * mm =  get_kingmem_object(void);
-						mm->manipulate_phys((file->shared_contents->pool[i])<<5>>18<<1,1,file->shared_contents->mapped_pagetype,actions.CLEAR);
-						mm->used_memory -= get_multi_from_pagetype(file->shared_contents->mapped_pagetype)/4096;
+						dking->write(file->disk,file->diskpos+filemulti*h,file->mem->pool[h],filemulti);
+						Kingmem * mm =  get_kingmem_object(NUH);
+						free(file->mem->pool[i])<<5>>18<<1,1,pagetype);
+						mm->used_memory -= get_multi_from_pagetype(pagetype)/4096;
 					}
 					else{ ++closedyet;}
 				}
@@ -183,7 +180,6 @@ class memfile : Hash{
 	ustd_t mapped_pagetype;
 };
 class Swapfile : memfile{	//partitions
-	ustd_t disk;
 	ustd_t partition;
 };
 
@@ -192,10 +188,12 @@ class meta{
 	uchar_t name[64]		//null-ending string, if you need more, you dont
 	ustd_t type;
 	ustd_t mode;			//syntax is 1 == root only, 0 == all, from MSB to LSB:		0,0,0,0,0,0,writing,reading,
+	ustd_t partition;		//non-relative partition number
+	ulong_t relpos;
 	ulong_t length;			//in bytes
 };
 
-class File{
+class File : King{
 	meta data;
 	File * parent;
 	File ** double_link;				//to do parent->children->pool_free()
@@ -204,14 +202,12 @@ class File{
 	union{
 	//type==DEVICE
 	struct{
-		ulong_t kind;				//string indicating the type of device, assigned by the drivers and is meant for use by the subsystem modules
-		union{
-			ulong_t name;			//something conjured up by the kernel so that IO operations dont rely on breakable indexes
-			ustd_t identification;		//oem low, devid high, because the process ends up being the same anyway
-		};
+		char guid[16];
+		ustd_t identification;		//oem low, devid high, because the process ends up being the same anyway
 		ustd_t geninfo;				//class code...
 		uchar_t bus;
 		uchar_t device;
+		uchar_t function;
 		uchar_t irline;
 		uchar_t irpin;
 		uchar_t ranges_mask;			//IO space / memory bit
@@ -222,8 +218,11 @@ class File{
 		ustd_t expansion_rom;			//holy shit its mikerkode
 		char * ACPI_definition;			//honestly, acpi_definition needs to be a big class because of how things actually work (poll_status... pwr... whatever you want), this is a placeholder
 		Thread * thread;
-		Driver * driver;
+		fiDriv * driver_suggestion;
+		fiDriv * driver;
 		auto * virt_irhandler;
+		File * stream;
+		ulong_t stream_offset;
 	};
 	struct{
 		union{
@@ -233,7 +232,9 @@ class File{
 			union{
 				//type==DIRECTORY
 				struct{
-					Kptr children;
+					Hash children{
+						File * pool : King.pool;
+					}
 				};
 				//..
 				struct{
@@ -266,6 +267,7 @@ class fiDriv : File;
 
 class Descriptor{
 	ulong_t findex;
+	ulong_t file_offset;
 	ustd_t polled;
 	ustd_t flags;		//the first bit of flags indicates a file mapping if set
 };
