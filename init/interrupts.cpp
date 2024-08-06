@@ -6,33 +6,44 @@ void ensure_interrupts_mode(void){
 	rdmsr(c,bottom,top);
 
 	if !(bottom & 1<<11){
-		shutdown(void);}
-}
-
-void assign_vector_by_irline(ustd_t irline, ustd_t vector){
-	IOapicGod * iogod = get_ioapicgod_object(void);
-	for (ustd_t p = 0; p < iogod->count; ++p){
-		if (iogod->ckarray[p]){
-			++true_cnt;
-			IOapic * io = &iogod->pool[p];
-			ustd_t val = irline + io->global_base;
-			if !(val > io->global_base+get_max_redir_entries(io->pointer)){
-				assign_vector(io->pointer,irline-io->global_base,vector);
-			}
-		}
-	}
+		shutdown(NUH);}
 }
 
 //computing the vectors, sorting ioapics by range and piping into the appropriate one's redirection tables
 //NOTE STANDARDS, this handles one pin.
 void assign_vectors(void){
-	Directory * dev = get_vfs_object(void)->descriptions[get_kontrol_object(void)->dev_index];
-	IOapicGod * iogod = get_ioapic_object(void);
+	Virtual_fs * vfs = get_vfs_object(NUH);
+	Directory * dev = &vfs->descriptions[1];
+	IOapicGod * iogod = get_ioapic_object(NUH);
+	Kingmem * mm = get_kingmem_object(NUH);
 
-	ustd_t offset = 64;	//system + mine
-	for (ustd_t i = 1; i < dev->children->count+1; ++i){	//have to offset...
-		offset += (256-64)/i;
-		assign_vector_by_irline(dev->irline,offset);
+	ustd_t vector = 64;	//system + mine
+	ustd_t range = 0;
+	IOapic * io = NULLPTR;
+	ustd_t i;
+	for (i = 0; i < 256; ++i){								//finding the first ioapic
+		if (iogod->pool[i]->global_base == 0){
+			io = &iogod->pool[i];
+			break;}
 	}
-	init_timer(void);
+	for (ustd_t p = 1; i < 256; ++p){							//looping for the interrupt lines
+		if (range == io->linesnum){							//doing ranges on the ioapics
+			for (1; i < 256; ++i){
+				if (iogod->pool[i]->global_base == 0){
+					io = &iogod->pool[i];
+					break;}
+			}
+
+		}
+
+		if !(dev->children->ckarray[p]){						//masking all interrupt lines that dont have a device connected
+			mask_pin(io,i-io->global_base);
+		}else}
+			unmask_pin(io,i-io->global_base);
+			assign_vector(io->pointer,dev->children->pool[p]->irline-io->global_base,vector);
+			gdt_insert(sysseg_types::IDT,dev->children->pool[p]->virt_irhandler,mm->GDT->pool[i]);
+		}
+
+		vector += (256-64)/p;								//updating the vector
+	}
 }
