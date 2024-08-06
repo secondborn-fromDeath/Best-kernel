@@ -6,39 +6,47 @@ What this guy needs to do:
 */
 
 enum pcitypes{ PCI_TO_PCI_DEVICE,PCI_TO_PCI_BRIDGE,};
-class PciKing : King{
+class PciKing{
+	King names{
+		struct{
+		ustd_t identification;
+		ustd_t count;
+		} * pool : King.pool;
+	};
+
+	void pci_init(void){
+		this->type = hashtypes::DOUBLE_POINTER;
+
+		Processor * processor = get_processor_object(NUH);
+		Device host;
+		memset(host,0,sizeof(File));				//host bus is 0,0,0
+
+		boot_write(processor,host,0x71,0x0);					//setting the cpu snoop to be 0 becuase it is fine, see 440fx pciset page 34: "it is whatever"
+	}
 	/*
 	Runtime interface for device drivers
 	*/
-	void write(usdt_t dev, ustd_t function, ustd_t * source, ulong_t * offsets, ulong_t count){
-		Virtual_fs * vfs = get_vfs_object(void);
-		Processor * processor = get_processor_object(void);
-		this->stream_init(void);
+	void write(Device * dev, ustd_t * source, ulong_t * offsets, ulong_t count){
+		Processor * processor = get_processor_object(NUH);
+		this->stream_init(NUH);
 
-		ustd_t proto_mask = 1<<31 | vfs->descriptions[dev]->bus<<16 | vfs->descriptions[dev]->device<<11 | function<<8;
+		ustd_t proto_mask = 1<<31 | dev->bus<<16 | dev->device<<11 | dev->function<<8;
 		for (ustd_t g = 0; g < count; ++g){
 			ustd_t mask = proto_mask | offsets[g]>>2<<2;	//bit 1 is 32/64bit so we treat it as reserved since i dont support it
 			outd(mask,0xcf8);
 			outd(source[g],0xcfc);
-			__attribute__((optimize("O0"))) for (ustd_t h = processor->frequency/this->frequency*dev->devsel_timing; h; --h);	//either 3 or 4
-			}
 		}
 		__non_temporal this->calendar = 0;
 	}
-	void read(ustd_t dev, ustd_t * destination, ulong_t * offsets, ulong_t count){
-		Virtual_fs * vfs = get_vfs_object(void);
-		Processor * processor = get_processor_object(void);
-		this->stream_init(void);
+	void read(Device * dev, ustd_t * destination, ulong_t * offsets, ulong_t count){
+		Processor * processor = get_processor_object(NUH);
+		this->stream_init(NUH);
 
-		ustd_t proto_mask = 1<<31 | vfs->descriptions[dev]->bus<<16 | vfs->descriptions[dev]->device<<11 | function<<8;
+		ustd_t proto_mask = 1<<31 | dev->bus<<16 | dev->device<<11 | dev->function<<8;
 		for (ustd_t g = 0; g < count; ++g){
 			ustd_t mask = proto_mask | offsets[g]>>2<<2;
 			outd(mask,0xcf8);
 			destination[g] = ind(0xcfc);
-
-			//here bus frequency is either 33Mhz or 66Mhz, devsel_timing is either 3, 4 or assumed 16
-			__attribute__((optimize("O0"))) for (ustd_t h = processor->frequency/this->frequency*dev->devsel_timing; h; --h);
-			}
 		}
 		__non_temporal this->calendar = 0;
 	}
@@ -47,16 +55,12 @@ class PciKing : King{
 	Above but for the pci driver itself
 	*/
 	void boot_write(Processor * processor, Device * dev, ustd_t reg, ustd_t contents){
-		__attribute__((optimize("O0"))){ for (ustd_t h = processor->frequency/this->frequency*dev->devsel_timing; h; --h);
-		}
-		ustd_t mask = 1<<31 | vfs->descriptions[dev]->bus<<16 | vfs->descriptions[dev]->device<<11 | reg;
+		ustd_t mask = 1<<31 | dev->bus<<16 | dev->device<<11 | dev->function<<8 | reg;
 		outd(mask,0xcf8);
 		outd(contents,0xcfc);
 	}
 	ustd_t boot_read(Processor * processor, Device * dev, ustd_t reg){
-		__attribute__((optimize("O0"))){ for (ustd_t h = processor->frequency/this->frequency*dev->devsel_timing; h; --h);
-		}
-		ustd_t mask = 1<<31 | vfs->descriptions[dev]->bus<<16 | vfs->descriptions[dev]->device<<11 | reg;
+		ustd_t mask = 1<<31 | dev->bus<<16 | dev->device<<11 | dev->function<<8 | reg;
 		outd(mask,0xcf8);
 		return ind(0xcfc);
 	}
@@ -66,68 +70,127 @@ class PciKing : King{
 
 	bus,dev,fun need to be passed as 0 (*==0 lol) initially
 	*/
-	ustd_t enumerate_devices(Processor * processor, Virtual_fs * vfs, Directory * devices, DriversGod * drivgod, ustd_t bus_number, ustd_t * device_number, ustd_t function, ustd_t re){
-		while !(device_number* == 32){
+	using enum device_driver_routines;
+	void enumerate_devices(Processor * processor, Virtual_fs * vfs, Directory * devices, DriversGod * drivgod, ustd_t bus_number, ustd_t * device_number, ustd_t function, ustd_t re){
+		Thread * ori_thread = get_thread_object(NUH);
+		for (1; device_number* != 32; ++device_number*){
 			Device * newdev = vfs->pool_alloc(1);
 			devices->children->pool_alloc(1)* = newdev;	//legal sepple? DANGER
-			newdev->bus = bus_number;			//NOTE OPTIMIZATION, this is unacceptable. It should be behind the conditional and then the boot-whatever should take the raw arguments
+			newdev->bus = bus_number;
 			newdev->device = device_number*;
 			newdev->function = function;
-			newdev->devsel_timing = get_devsel_timing(processor,newdev);		//see boot_read/write
+			function = 0;
+			newdev->devsel_timing = get_devsel_timing(processor,newdev);
 			newdev->identification = get_idinfo(processor,newdev);
-			ustd_t name_counter = 0;
-			for (ustd_t i = 0; i < devices->length; ++i){				//attempt to see wether from the back up the device is still there (through teh model id)
-				if (devices->pool[i]->identification == newdev->identification){
-					if (devices->pool[i]->name>>32){++name_counter; continue;}
-					devices->pool[i]->name |= name_counter<<32;
-					vfs->pool_free(newdev,1);				//third line of the function
-					goto devenum_bail;
-				}
-			}
-			if !(newdev->identification == -1){				//first one that can fail AND be checkable
-				newdev->name |= name_counter<<32;
-				++this->enumerated_devices;
-				newdev->geninfo = get_geninfo(processor,newdev);
-				((ushort_t*)&newdev->irline)[0] = get_irline_and_pin(processor,bus_number,device_number*);
-				ustd_t multifunction_boo;
-				ustd_t headertype = get_headertype(processor,newdev,&multifunction_boo);
-				set_device_ranges(processor,newdev,headertype);
-				newdev->expansion_rom = get_expansionrom(processor,newdev);
-				newdev->multifunction_boo = get_multifunction_boolean(processor,newdev);
+			if (newdev->identification == -1){ vfs->pool_free(newdev,1); continue;}							//first one that can fail AND be checkable
 
-				newdev -> driver = NULL;
-				for (ustd_t g = 0; g < drivgod->length; ++g){	//i love this keyword
-					fiDriv * fidriv = drivgod->pool[g];
-					if (fidriv->d->runtime->identification == driver_kinds::MODULE){ continue;}
-					if !(fidriv->d->code->check_classcode(newdev->geninfo)){ continue;}
-					if !(fidriv->d->code->attach_model(newdev))){ continue;}
+			newdev->geninfo = get_geninfo(processor,newdev);
+			ushort_t * irline_pointer = &newdev->irline;
+			irline_pointer* = get_irline_and_pin(processor,bus_number,device_number*);
+			newdev->function = function;
+			ustd_t multifunction_boo;
+			ustd_t headertype = get_headertype(processor,newdev,&multifunction_boo);
+			set_device_ranges(processor,newdev,headertype);
+			newdev->expansion_rom = get_expansionrom(processor,newdev);
+			newdev->multifunction_boo = get_multifunction_boolean(processor,newdev);
 
-					Thread * thread = get_thread_object(void);
-					set_thread(fidriv->runtime->children[0]);
-					newdev->thread = thread(void);			//cloning a thread for the device to have its own stack
-					newdev->thread->type = thread_types::DEVICE;
-					Thread * drivthread = get_thread_object(void);
-					drivthread->prior = thread;
-					drivthread->instruction_pointer = drivthread->parent->userspace_code + &fidriv->initialize_device;
-					run_thread(drivthread);				//this IS running in userspace but there is no way to finish booting if the driver is malicious
-					break;
+			newdev -> driver = NULL;
+			for (ustd_t g = 0; g < drivgod->length; ++g){
+				fiDriv * fidriv = drivgod->pool[g];
+
+				if (fidriv->d->runtime->identification == driver_kinds::MODULE){ continue;}
+				if (fidriv->d->runtime->code->classcode != newdev->geninfo){ continue;}
+				File * back = malloc(1,pag::SMALLPAGE);
+				memset(back,0,4096);
+				memcpy(back,newdev,sizeof(File));
+				ustd_t irhandler = module_ctl(fidriv,INITIALIZE_DEVICE,newdev);
+				memcpy(newdev,back,sizeof(File));
+				free(back,1);
+				newdev->virt_irhandler = fidriv->d->runtime->userspace->code + fidriv->d->runtime->code->functions[irhandler];
+
+				ustd_t * newdev_name = &newdev->meta.name;
+
+				if (newdev_name* == DISK){
+					Disksking * dking = get_disksking_object(NUH);
+					dking->load_partition_table(newdev);
 				}
 
-				if (headertype == PCI_TO_PCI_DEVICE){
-					device_enum(processor,vfs,get_secondarybus_number(processor,newdev),0,0,re);	//enumerating the new bus
-				}
-				if ((multifunction_boo) && (!function)){
-					for (ustd_t g = 1; g < 4; ++g){
-						device_enum(processor,vfs,drivgod,bus_number,device_number,g,re);
+				if (newdev_name* == KEYB){ goto yes_input_dev;
+				if (newdev_name* == MOUS){ goto yes_input_dev;
+//				if (newdev_name* == TRCK){ goto yes_input_dev;
+				goto no_input_dev;
+		yes_input_dev:
+				File * stream = vfs->pool_alloc(1);
+				stream->mem->pool = kptralloc(1);
+				stream->mem->pool[0] = kshmalloc(1);
+				stream->mem->listeners[0] = 1;
+				newdev->double_link = stream;
+		no_input_dev:
+
+				//doing the device's name counter
+				ustd_t gj = 0;
+				for (0; gj < this->names->length; ++gj){
+					if (newdev_name* == this->names->pool[gj]->identification){
+						++this->names->pool[gj]->count;
+						newdev_name[1] = this->names->pool[gj]->count + 0x30;			//ASCII conversion
+						goto pcienum_whatever_goto;
 					}
 				}
-			}
-			else{vfs->pool_free(newdev,1);}
 
-devenum_bail:		++device_number;
+				identification_queue * lol = this->names->pool_alloc(1);
+				lol->identification = newdev_name*;
+				lol->count = 0;									//redundant...
+pcienum_whatever_goto:
+				Thread * sub = fidriv->runtime->children[0];
+				newdev->thread = clone_thread(sub);
+
+				newdev->thread->type = thread_types::DEVICE;
+				break;
+			}
+
+			if (headertype == PCI_TO_PCI_DEVICE){
+				device_enum(processor,vfs,get_secondarybus_number(processor,newdev),0,0,re);	//enumerating the new bus
+			}
+			if ((multifunction_boo) && (!function)){
+				for (ustd_t g = 1; g < 4; ++g){
+					device_enum(processor,vfs,drivgod,bus_number,device_number,g,re);
+				}
+			}
+devenum_bail:
 		}
 	}
-		/*
+
+	void load_all_devices(void){
+		Processor * processor = get_processor_object(NUH);
+		Virtual_fs * vfs = get_vfs_object(NUH);
+		Directory * devices = &vfs->descriptions[1];
+		Driversgod * drivgod = get_driversgod_object(NUH);
+
+		this->names->pool = kshmalloc(2);
+		this->names->length = 1028;						//nuff
+
+		for (ustd_t i = 0; i < devices->children->length; ++i){			//marking devices
+			devices->children->pool[i]->present = 0;}
+		ustd_t device_number = 0;
+		enumerate_deivces(processor,vfs,devices,drivgod,0,0,&device_number,0);	//filling them
+		for (ustd_t i = 0; i < devices->children->length; ++i){			//marking devices
+			Device * device = &devices->children->pool[i];
+			if (device->present == 0){					//removing hotplugged-out
+				ustd_t * devname = &device->meta.name;
+				if (device->devname == DISK){				//if the device was a disk removing the partition table...
+					Disksking * dking = get_disksking_object(NUH);
+					for (ustd_t o = 0; o < dking->partitions->length; ++o){
+						Partition * part = &dking->partitions->pool[o];
+						if (part->disk == device){
+							dking->partitions->pool_free(part,1);
+					}
+				}
+				DEVKILL(&devices->children->pool[i];}
+		}
+
+		kptr->pool_free(this->names->pool,2);
+	}
+	/*
 	A bunch of get/set_XXX info from configuration space -type functions
 		i dont do cardbus, expresscard uses the type 0x0 header
 	*/
@@ -135,7 +198,7 @@ devenum_bail:		++device_number;
 		ustd_t mask = 1<<31 | dev->bus<<16 | dev->device<<11 | 0x4;
 		outd(mask,0xcf8);
 		mask = ind(0xcfc);
-		return mask<<22>>30;	//extracting the 2 bits from status-command
+		return mask<<22>>30;
 	}
 	ustd_t get_headertype(Processor * processor, Device * dev, ustd_t * multifunction){
 		ustd_t ret =  boot_read(processor,dev,0x6) <<16>>24;
@@ -196,11 +259,9 @@ devenum_bail:		++device_number;
 			dev->bases[rangenum] = NULLPTR;
 			dev->lengths[rangenum] = NULLPTR;
 			dev->bases[rangenum] |= (base>>4<<4)<<or;
-			//taking away the device's ability to master south and northbridge
-			ustd_t dis = get_command(processor,dev);
+			ustd_t dis = get_command(processor,dev);					//taking away the device's ability to master south and northbridge
 			set_command(processor,dev,dis<<2>>2);
-			//reading the size of the range by writing all 1s to the BAR register and then reading
-			boot_write(processor,dev,reg,-1);
+			boot_write(processor,dev,reg,-1);						//reading the size of the range by writing all 1s to the BAR register and then reading
 			dev->lengths[rangenum] |= ((!(boot_read(processor,dev,reg)<<2>>2))+1))<<or;	//removing type bits and computing two's complement
 
 			//restoring everything
