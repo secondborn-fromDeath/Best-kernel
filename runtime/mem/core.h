@@ -46,7 +46,7 @@ Bits:
 		on file mapping
 					13-45 hold an index into the process' descriptors		//hard maximum of 4mill descriptors
 					48-62 hold the idnex into the pages				//max... a lot of pages? too many to allocate in one go actually
-
+					on unmapping 48-62 is the index into the process' descriptors
 
 Due to the need for the top bits we do 4level paging, nobody has that much memory anyway
 */
@@ -417,7 +417,7 @@ class Kingmem{
 				ustd_t page = (entry*)<<1>>(48+1);
 
 				File * file = &vfs->descriptions[process->descs->pool[desc]->findex];
-				entry* = vfs->load_page(get_disksking_object(NUH),file,page) | memreq_template(pagetype,mode::MAP,file->cache,file->executable);
+				entry* = vfs->load_page(get_disksking_object(NUH),file,page) | memreq_template(pagetype,mode::MAP,file->cache,file->executable) | (desc<<48);
 			break;}
 			case mode::SEGFAULT:{
 				process->sigset |= signals::SIGSEGV;
@@ -435,7 +435,7 @@ class Kingmem{
 				if (dking->partitions->pool[i]->signature == SWAP){
 					--ct;
 				}
-				if (ct == 0){ dking->raw_read(entry*<<1>>(57+1)),entry*<<17>>30;
+				if (ct == 0){ dking->raw_read(entry*<<1>>(57+1)),entry*<<16>>29;
 				break;}
 			}
 			if (ct){ free(phys,1,pagetype);
@@ -460,7 +460,7 @@ class Kingmem{
 					Virtual_fs * vfs = get_vfs_object(NUH);
 					File * file = &vfs->descriptions[process->descs->pool[pointer[i]<<1>>(48+1)]->findex];
 					void ** dub = file->mem->pool;
-					void * comp = pointer[i]<<17>>30;
+					void * comp = pointer[i]<<16>>29;
 					for (ustd_t k = 0; k < file->mem->length; ++k){	//sorting for which page we are even pointing at, not enough bits...
 						if (dub* == comp){
 							--file->mem->ckarray[k];
