@@ -123,52 +123,64 @@ class IOapic{
 	Disclaimer that this only works on 64bit processors
 	*/
 	ustd_t * get_lapic_pointer(void){
-		Kontrol * ctrl = get_kontrol_object(void);
+		Kontrol * ctrl = get_kontrol_object(NUH);
 		return ctrl->lapic_override;
 	}
 
 	ustd_t set_task_priority(ustd_t prio){
-		if (prio > 15){ return 1;}
-		get_lapic_pointer(void)[0x80/4] = prio;
-		return 0;
+		__asm__ volatile(
+		"MOVQ	%%rax,%%rcx\n\t"
+		"XORL	%%rax,%%rax\n\t"
+		"CMPQ	%%rcx.$15\n\t"
+		"SETG	%%rax\n\t"
+		"MOVQ	+tpr_badarg-tpr_gudarg,%%rdx\n\t"
+		"MUL	%%dl,%%al.%%ax\n\t"		//the instruction is fine but idk the syntax
+		"JMP	+%%eax\n\t"
+		"tpr_gudarg:\n\t"
+		"MOVQ	%%rcx,%%cr8\n\t"
+		"JMP	+0\n\t"
+		"RET\n\t"
+		"tpr_badarg: MOVL $1,%%eax\n\t"
+		"RET\n\t"
+		::"r"(prio):);
 	}
 	//no need for get
 	void signal_EOI(void){
-		get_lapic_pointer(void)[0xB0/4] = 1;
+		get_lapic_pointer(NUH)[0xB0/4] = 1;
 	}
 	ustd_t set_spurious(uchar_t newvec){
-		get_lapic_pointer(void)[0xF0/4] = (ustd_t)newvec;
+		get_lapic_pointer(NUH)[0xF0/4] = (ustd_t)newvec;
 		return 0;
 	}
 	ustd_t get_spurious(void){
-		return get_lapic_pointer(void)[0xF0/4];
+		return get_lapic_pointer(NUH)[0xF0/4];
 	}
 	/*
 	You use command reg and read from remote read reg
 	destination field is the *local* unit and the vector is the register
 	*/
 	ustd_t remote_read(Kontrol * status, ustd_t remote_id, ustd_t regnum){
-		ustd_t * lapic = get_lapic_pointer(void);
+		ustd_t * lapic = get_lapic_pointer(NUH);
 		lapic[0x310/4] = brother_id<<24;
-		ustd_t interrupt_mask = get_targetipi_mask(void) | regnum;
+		ustd_t interrupt_mask = get_targetipi_mask(NUH) | regnum;
 		((char *)lapic)[0x300/8] = regnum;
 		return lapic[0xC0/4];
 	}
 	void init_timer(void){
-		ustd_t * lapic = get_lapic_pointer(void);
+		ustd_t * lapic = get_lapic_pointer(NUH);
 		ustd_t f = lapic[320/4];
 		f &= 0xFFFFFFFF^(1<<17);				//configuring it as one-shot and it will stay that way forever
 		(char)f = OS_INTERRUPTS::TIMER;				//assigning it the vector
 		lapic[320/] = f;
 	}
 	void mask_timer(void){
-		ustd_t * lapic = get_lapic_pointer(void);
+		ustd_t * lapic = get_lapic_pointer(NUH);
 		ustd_t f = lapic[320/4];
 		f |= 1<<16;				//DANGER we need it to work like this step by step.
 		lapic[320/] = f;			//setting the mask bit
 	}
 	void unmask_timer(void){
-		ustd_t * lapic = get_lapic_pointer(void);
+		ustd_t * lapic = get_lapic_pointer(NUH);
 		ustd_t f = lapic[320/4];
 		f &= 0xFFFFFFFF^(1<<16);		//clearing the mask bit
 		lapic[320/] = f;
@@ -178,7 +190,7 @@ class IOapic{
 	*/
 	enum divider{ ONE,TWO,FOUR,EIGHT,SIXTEEN};
 	void schedule_timed_interrupt(ustd_t ticks, ustd_t divider){	//reminder you dont need a time conversion lol
-		ustd_t * lapic = get_lapic_pointer(void);
+		ustd_t * lapic = get_lapic_pointer(NUH);
 
 		//writing to initial count
 		lapic[0x380/4] = ticks;
@@ -190,7 +202,7 @@ class IOapic{
 			pipe |= 2<<18;
 		}
 		lapic[0x320/4] = pipe;
-		unmask_timer(void);
+		unmask_timer(NUH);
 	}
 	ustd_t get_targetipi_mask(void){
 		return 1<<14 | 1<<15 | 0<<18;		//assert, level triggered, target in +0x310
@@ -211,50 +223,52 @@ class IOapic{
 		return 0;
 	}
 	void set_ipi_lowreg(ustd_t mask){
-		ushort_t * lapic = get_lapic_pointer(void);
+		ushort_t * lapic = get_lapic_pointer(NUH);
 		lapic[0x302/2] = mask>>16;		//writing to the high word
 		((char *)lapic)[0x301] = mask<<16>>24;	//writing to the second byte		low byte causes IPI to be sent...
 	}
 
 	void poke_brother(ustd_t brother_id, ustd_t action){
-		ustd_t * lapic = get_lapic_pointer(void);
+		ustd_t * lapic = get_lapic_pointer(NUH);
 		lapic[0x310/4] = brother_id<<56;
-		lapic[0x300/4] = get_targetipi_mask(void) | action;
+		lapic[0x300/4] = get_targetipi_mask(NUH) | action;
 	}
 	#define wake_brother(brother_id){ poke_brother(brother_id,ints::WAKE)}
 	#define sleep_brother(brother_id){ poke_brother(brother_id,ints::SLEEP)}
+	#define highprio_sleep_brother(brother_id){ poke_brother(brother_id,ints::HIGHPRIO_SLEEP);}
 
 	void brothers_poke(ustd_t action){
-		ustd_t * lapic = get_lapic_pointer(void);
-		lapic[0x300/4] = get_exselfipi_mask(void) | action;
+		ustd_t * lapic = get_lapic_pointer(NUH);
+		lapic[0x300/4] = get_exselfipi_mask(NUH) | action;
 	}
 	#define wake_brothers(void){ brothers_poke(ints::WAKE)}
-	#define sleep_brother(void){ brothers_poke(ints::SLEEP)}
-	#define brothers_sleep(void){	\
-		brothers_poke(ints::HIGHPRIO_SLEEP);	\
-	}	\
+	#define brothers_sleep(void){brothers_poke(ints::SLEEP);}
+	#define highprio_sleep_brothers(void){ brothers_poke(ints::HIGHPRIO_SLEEP);}
+
 	void family_poke(ustd_t interrupt){
-		ustd_t * lapic = get_lapic_pointer(void);
-		lapic[0x300/4] = get_allipi_mask(void) | interrupt;
+		ustd_t * lapic = get_lapic_pointer(NUH);
+		lapic[0x300/4] = get_allipi_mask(NUH) | interrupt;
 	}
 
 	void INT(ustd_t num){				//because in ringzero the ipi setting is undefined while in userspace it is self
-		set_ipi_mode(get_selfipi_mask(void));
-		__asm__("INT %%al\n\t"::"r"(num):);
+		set_ipi_mode(get_selfipi_mask(NUH));
+		__asm__ volatile("INT %%al\n\t"::"r"(num):);
 	}
 
 	void iret(void){
-		__asm__("IRETQ\n\t");
+		__asm__ volatile("IRETQ\n\t");
 	}
-	void halt(void){
-		set_task_priority(0);			//we want the hardware to help us out with not overworking one processor
+	void highprio_halt(void){
 		__asm__ volatile(
 		"MOVq	(%%rip),%%rax\n\t"
 		"MOVq	%%rax,%%cr12\n\t"
 		"HLT\n\t"
 		);
 	}
-	void highprio_halt(void);
+	void halt(void){
+		set_task_priority(0);			//we want the hardware to help us out with not overworking one processor
+		highprio_halt(NUH);
+	}
 	void wake(void){
 		__asm__ volatile(
 		"MOVq	%%cr12,%%rax\n\t"
