@@ -1,41 +1,45 @@
 using namespace signals;
 
-void store_state(Thread * thread);	//reminder these do gdt,ldt and pagetree... possibly in the future tss for drivers???? NOTE OPTIMIZATION
-void load_state(Thread * thread);
-void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure out what do about flags
+extern void store_state(Thread * thread){				//these also do the pagetree
+#define ENTER_RINGZERO LONGJUMP(&enter_ringzero);
+extern void leave_ringzero(struct interrupt_stack in);
+extern void enter_ringthree(Thread * thread);
+//void double_fault_store_state(void);				//... LONGTERM
 
-	__attribute__((interrupt)) void run_ringthree(Thread * thread){
-		set_ipi_mode(get_selfipi_mask(void));
+
+	void run_ringthree(Thread * thread){
+		set_ipi_mode(get_selfipi_mask(NUH));
 		set_task_priority(0);
-		load_state(thread);
-		thread->state.accumulator = thread->sys_retval;
-		load_stack(thread);
+		cli(NUH);			//boot lol
+		thread->state::accumulator = thread->sys_retval;
 		if (thread->type == APPLICATION) {schedule_timed_interrupt(SCHEDULER_INTERRUPT_TIMER,EIGHT);}	//undefined and random value, see drivers/interrupts.cpp
+		sysret_load_stack(thread);
+		leave_ringzero(thread);
 	}
 	void run_thread(Thread * thread){
 		set_thread_object(thread);
 		run_ringthree(thread);
 	}
 	void help_out(void){
-		Processor * processor = get_processor_object(void);
-		run_thread(&get_threadsking_object(void)->pool[processor->current_thread]);
+		Processor * processor = get_processor_object(NUH);
+		run_thread(&get_threadsking_object(NUH)->pool[processor->current_thread]);
 	}
 	void getnext_thread(Processor * processor){
-		ThreadsKing * tking = get_threadsking_object(void);
-		tking->stream_init(void);
-		ulong_t current_micros = gettime_nanos(void)*1000;
+		ThreadsKing * tking = get_threadsking_object(NUH);
+		tking->stream_init(NUH);
+		ulong_t current_micros = gettime_millis(NUH);
 		for (ustd_t i = processor->current_thread+1; i != processor->current_thread; ++i){
 			if (i == tking->length){ i = 0;}
 
 			if (tking->pool[i]->parent->sigset & SIGKILL){
 				TKILL(thread);
 				if !(tking->pool[i]->parent->workers->count){
-					Processking * processking = get_processking_object(void);
+					Processking * processking = get_processking_object(NUH);
 					PKILL(tking->pool[i]->parent,1);	//gets all of our memory back and frees the spot in the process pool, the memset should be in there
 				}
 			}
 
-			if (tking->pool[i]->type == threadtypes.DRIVER){ tking->pool_free(&tking[i],1);}	//see modinsert
+			if (tking->pool[i]->type == threadtypes::DRIVER){ tking->pool_free(&tking[i],1);}	//see modinsert
 			if !(tking->pool[i]->taken){
 				processor->current_thread = i;
 				__non_temporal tking->calendar = 0;
@@ -46,9 +50,8 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 		}
 		__non_temporal tking->calendar = 0;
 		processor->current_thread = -1;
-		halt(void);
+		halt(NUH);
 	}
-	//NOTE you likely need functions for the process' signals beyond the kill that is checked above			yeah but does this check the fucking thread or the process? fuck
 	ustd_t signal_handler(Thread * thread, ustd_t index, ustd_t signal){
 		switch (index){
 			case SIGKILL:{	TKILL(thread); return 1;}
@@ -58,8 +61,10 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 				if (thread->sigmask & signal){
 					return 0;
 				}
-				if (thread->sighandlers[index]){	//this is wrong.
+				if (thread->sighandlers[index]){
 					thread->state->instruction_pointer = thread->sighandlers[index];	//this includes sigterm
+					thread->sigset |= SIGKILL;
+					run_ringthree(thread);
 				}
 				return 0;
 			}
@@ -86,14 +91,14 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 		}
 	}
 	void get_some_help(void){
-		ProcessorsGod * processors = get_processorsgod_object(void);
-		for (ustd_t i = 0; i < get_processors_number(void); ++i){
+		ProcessorsGod * processors = get_processorsgod_object(NUH);
+		for (ustd_t i = 0; i < get_processors_number(NUH); ++i){
 			Processor * brother = &processors->pool[i];
 			if !(brother->executed_threads){
 				if (brother->online_capable){
-					Processor * struggler = get_processor_object(void);
+					Processor * struggler = get_processor_object(NUH);
 					ustd_t backup = struggler->current_thread;
-					get_next_thread(void);
+					get_next_thread(NUH);
 					brother->current_thread = struggler->current_thread;
 					struggler->current_thread = backup;
 					poke_brother(i,OS_INTERRUPTS::HELP_OUT);
@@ -101,7 +106,7 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 				}
 			}
 		}
-		BLOOD_LIBEL(void);
+		BLOOD_LIBEL(NUH);
 		//get to S1 or something idk
 	}
 	/*
@@ -116,18 +121,21 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 	}
 	#define RESCHEDULE LONGJUMP(&routine)
 	void routine(void){
-		Kontrol * ctrl = get_kontrol_object(void);
-		Kingmem * mm = get_kingmem_object(void);
-		Virtual_fs * vfs = get_vfs_object(void);
-		Processor * processor = get_processor_object(void);
+		Kontrol * ctrl = get_kontrol_object(NUH);
+		Kingmem * mm = get_kingmem_object(NUH);
+		Virtual_fs * vfs = get_vfs_object(NUH);
+		Processor * processor = get_processor_object(NUH);
 
+		if !(ctrl->devenum_millis > gettime_millis(NUH)){
+			reenact_IO(NUH);
+		}
 		if (ctrl->memory_meridian == 10){
-			mm->swap_process(get_process_object(void););
-			vfs->evictions_cycle(void);
+			mm->swap_process(get_process_object(NUH););
+			vfs->evictions_cycle(NUH);
 		}
 
 		if (executed_threads > ctrl->maxthreads/get_processors_number(void*1)){
-			evaluate_workload(void);
+			evaluate_workload(NUH);
 		}
 
 		getnext_thread(processor);
@@ -137,12 +145,6 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 	}
 
 
-	void enter_ringzero(void){
-		set_pagetree(get_ringzero_pagetree(void));
-		set_task_priority(15);
-		store_state(get_thread_object(void));
-		set_gdt(get_kontrol_object(void)->gdt);
-	}
 	/*
 	Tomfoolery.
 	The interrupt for syscalls is divide by 0 fault
@@ -150,45 +152,54 @@ void load_stack(Thread * thread);		//unprivileged sp,ss,cd,rip... i will figure 
 	struct interrupt_stack{
 		uint64_t * errcode,rip,cs,rflags,rsp,ss;
 	};
-	__attribute__((interrupt)) void os_interrupt_handler_template(constexpr vector){		//there are supposed to be a lot of these in the binary
-		enter_ringzero(void);
-		(OS_INTERRUPTS::ROUTINES[vector])(void);
+	void os_interrupt_handler_template(constexpr vector){		//there are supposed to be a lot of these in the binary
+		ENTER_RINGZERO;
+		Thread * thread = get_thread_object(NUH);
+		thread->sys_retval = thread->state::accumulator;
+		(OS_INTERRUPTS::ROUTINES[vector])(NUH);
 		set_task_priority(0);
-		load_state(get_thread_object(void));
+		leave_ringzero(get_thread_object(NUH));
 	}
-	//this sure is high overhead
-	__attribute__((interrupt)) void device_interrupt_handler_template(constexpr vector){
-		enter_ringzero(void);
-		Virtual_fs * vfs = get_vfs_object(void);
+	void device_interrupt_handler_template(constexpr vector){
+		ENTER_RINGZERO;
+		Kingmem * mm = get_kingmem_object();
+		Virtual_fs * vfs = get_vfs_object(NUH);
 		Directory * dev = &vfs->descriptions[1];
-		register Thread * thread = dev->children->pool[(vector-64)/dev->children->count]->thread;
-		thread->prior = get_thread_object(void);
-		memcpy(thread->state.stack_pointer,get_stack_pointer(void),40);		//copying the iret payload
-		set_stack_pointer(thread->state.stack_pointer);
+		Thread * thread = dev->children->pool[(vector-64)/dev->children->count]->thread;
+		thread->prior = get_thread_object(NUH);
+		auto * sp = vmto_phys(thread->prior->process->pagetree,thread->prior->state::stack_pointer);
+		memcpy(sp,get_stack_pointer(NUH),40);				//copying the iret payload
+		set_stack_pointer(sp);
 		thread->instruction_pointer = dev->virt_irhandler;
 		run_thread(thread);
 	}
-	void syscall(void){					//gets called by the 0th of above
-		SyscallsGod * sgod = get_syscalls_object(void);
+	void syscall(void){					//gets called by the 0th vector
+		SyscallsGod * sgod = get_syscalls_object(NUH);
+		Thread * thread = get_thread_object(NUH);
+		Process * process = thread->parent;
 
-		interrupt_stack * ringzero_stack = (get_stack_pointer(void) -24)/16*16;				//alignment...
-		uint64_t * userspace_stack = vmto_entry(get_process_object(void)->pagetree,ringzero_stack->rsp);
+		enter_ringzero(void);
 		ustd_t syscall_number = userspace_stack[0];
-		memcpy(userspace_stack-40,ringzero_stack,40);
+		memcpy(userspace_stack-40,ringzero_stack,40);		//endianess
 		set_stack_pointer(userspace_stack);			//DANGER ebil magick task linking???
-		LONGJUMP(sgod->pool[syscall_number]);			//if type==DRIVER syscall returns with iret into the same stack, otherwise jumps to routine
+		LONGJUMP(sgod->pool[syscall_number]);
 	}
 	#define SYSRET{ LONGJUMP(&sysret)}
 	void sysret(void){
-		Thread * thread = get_thread_object(void);
-		__non_temporal thread->taken = 0;
-		if (get_thread_object(void)->type == thread_types.APPLICATION){
+		Thread * thread = get_thread_object(NUH);
+		if (thread->type == thread_types::APPLICATION){
+			__non_temporal thread->taken = 0;
 			RESCHEDULE;
+		}
+		if (thread->type == thread_types::KERNEL){
+			auto * jmp = thread->prior->state::instruction_pointer+SYSCALL_INSTRUCTION_LENGTH;			//no conversion is needed, NOTE the macro.
+			TKILL(thread);
+			LONGJUMP(jmp);
 		}
 		run_thread(thread);
 	}
 	void timed_out(void){
-		enter_ringzero(void);
+		ENTER_RINGZERO;
 		RESCHEDULE;
 	}
 	#define BAD_SYSRET(thread,value){thread->sys_retval = value; SYSRET}
