@@ -9,7 +9,14 @@ void SYSWRITE(ustd_t desc, void * buf, ustd_t amount, ustd_t offset){
 	CONDITIONAL_SYSRET(thread,((file->meta.mode & permissions::WRITE)&&(process->owner_id != owner_ids::ROOT)));
 
 	void * truebuf = vmto_phys(process->pagetree,buf);
-	vfs->write(findex,truebuf,amount,offset);
+	if !(offset){
+		ulong_t * val = &process->descs->pool[desc]->file_offset;
+		vfs->write(findex,truebuf,amount,val*);
+		val* += amount;
+	}else{
+		vfs->write(findex,truebuf,amount,offset);
+	}
+
 	thread->sys_retval = amount;
 	SYSRET;
 }
