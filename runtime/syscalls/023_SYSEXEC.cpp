@@ -6,32 +6,22 @@ class Exec_header{
 	uchar_t tls_size;
 	uchar_t stacksize;
 	ushort_t max_descriptors;
-	ulong_t expected_memory_usage;	//this is in gigabytes
 	ustd_t start;
 	ustd_t programtype;
 	uchar_t id[32];
 	ulong_t checksum;
 };
 
-//The checksum is valid if subtracting it to the sum of the other fields ends up being 0
-#define EXEC_CHECK_CHECKSUM{	\
-if !(header->heapsize+header->tls_size+ header->stacksize+header->max_descriptors+header->start+header->expected_memory_usage+header->program_type+	\
-((ustd_t *)header->id)[0]+((ustd_t *)header->id)[8]+((ustd_t *)header->id)[16]+((ustd_t *)header->id)[24] == header->checksum)	\
-}
-
-
-/*this does not replace the calling process like oonix and instead simply makes a new one
-	Reading the header into a page, parsing it (evaluating the checksum really)
-	reserving the pages for the executable, making the process structure and initializing it,
-	allocating stuff into the process' pagetree, setting the main thread's ip and sp
-	mapping gdt and ldt into pagetree for tls and heap segments
-
-
-NOTE DANGER MOST IMPORTANT PLEASE READ IT FUCK!
-						remember that this heavily affects boot, setup_drivers()...
+/*
+This does not replace the calling process like oonix and instead simply makes a new one
 */
 
 
+//The checksum is valid if subtracting it to the sum of the other fields ends up being 0
+#define EXEC_CHECK_CHECKSUM{	\
+if !(header->heapsize+header->tls_size+header->stacksize+header->max_descriptors+header->start+header->program_type+	\
+((ulong_t *)&header->id[0])[0]+((ulong_t *)&header->id[8])[0]+((ulong_t *)&header->id[16])[0]+((ulong_t *)&header->id[24])[0] == header->checksum)	\
+}
 #define CONDITIONAL_BLOOD_LIBEL(condition){ if (condition){ BLOOD_LIBEL(void);}
 
 //returns the index into the processes array
@@ -43,8 +33,7 @@ ulong_t exec(File * source){
 	Exec_header * header = vfs->load_page(dking,source,0);
 
 	EXEC_CHECK_CHECKSUM{
-		//NOTE HARDENING CLEANUP ROUTINE, or not because we are going to swap the vfs anyway
-		return -1;
+		return -1;		//will get swapped anyway
 	}
 
 	Thread * calling_thread = get_thread_object(void);
@@ -82,7 +71,6 @@ ulong_t exec(File * source){
 	Kingthread * ktrd = get_kingthread_object(void);
 	Thread * main_thread = ktrd->pool_alloc(1);		//NOTE RACE CONDITION ->taken needs to be within alloc
 	CONDITIONAL_BLOOD_LIBEL(main_thread == 0);
-	main_thread->taken = 1;
 	process->workers->pool[0] = main_thread;
 
 	Kingdescs * kdescs = get_kingdescriptors_object(void);
@@ -94,18 +82,12 @@ ulong_t exec(File * source){
 	kdescs->calendary = 0;
 
 
-	//NOTE make it a function
-	process->pagetree_length = 512*8;				//finding the length of the pagetree
-	ustd_t mul = 512;
-	for (ustd_t i = header->expected_memory_usage; i; --i){
-		process->pagetree_length += mul*expected_memory_usage;
-		mul *= 512;
-	}
+	process->pagetree_length = mm->offset_by_depth(process,pag::SMALLPAGE+1);
 
-	//making the tree and piping it into Kingmem
+	//making the tree
 	process->pagetree = malloc(tosmallpage(process->pagetree_length),pag.SMALLPAGE);
 	CONDITIONAL_BLOOD_LIBEL(process->pagetree == 0);
-	mm->vmtree_lay(process->pagetree,header->expected_memory_usage);
+	mm->vmtree_lay(process->pagetree);
 	ustd_t pagetype;	//whore...
 
 	//identity mapping the gdt
@@ -121,10 +103,18 @@ ulong_t exec(File * source){
 		ulong_t length;
 		extract_segment_statistics(&gdt[g],&start,&length);
 
-		entry = mm->physto_entry(start);
+		void * thing = mm->mem_map(process->pagetree,start,pag.SMALLPAGE,MAX16BIT);
+		entry = mm->vmto_entry(process->pagetree,thing);
 		for (ustd_t y = 0; y < lenght/4096; ++y){
-			entry[y] = ((start+i*4096)<<12) | mm->memreq_template(pag.SMALLPAGE,mode.MAP,cache.WRITEBACK,1) | 1<<2;	//executable because itetrrupts and supervisor obviously
+			entry[y] |= (1<<2) | (1<<63);						//executable because itetrrupts and supervisor obviously
 		}
+	}
+	//identity mapping the kernel
+	void * kernelcode = get_kernelcode_pointer(NUH);
+	ulong_t codesize = get_kernelcode_size(NUH);
+	ulong_t something = mm->mem_map(process->pagetree,actual_ldt,pag.SMALLPAGE,codesize,cache.WRITEBACK);
+	for (ustd_t o = 0; o < ldtlen; ++o){
+		something[o] |= (1<<2) | (1<<63);
 	}
 
 	//-whatever- mapping the ldt
@@ -133,11 +123,10 @@ ulong_t exec(File * source){
 	void * actual_ldt = malloc(ldtlen,pag.SMALLPAGE);
 	CONDITIONAL_BLOOD_LIBEL(actual_ldt == 0);
 	gdt_insert(64bit_sysseg_types::LDT,actual_ldt,pag.SMALLPAGE),ldt_entry);							//4*GP# + heap	NOTE boot hardening
-	ulong_t something = mm->mem_map(process->pagetree,actual_ldt,pag.SMALLPAGE,ldtlen,cache.WRITEBACK);
+	something = mm->mem_map(process->pagetree,actual_ldt,pag.SMALLPAGE,ldtlen,cache.WRITEBACK);
 	for (ustd_t o = 0; o < ldtlen; ++o){
 		something[o] |= 1<<2;
 	}
-
 
 	//mapping the executable file
 	process->userspace_code = mm->mem_map(process->pagetree,source->shared_contents->pool[0],pagetype,1,cache.WRITEBACK);
@@ -161,9 +150,10 @@ ulong_t exec(File * source){
 	//making a stack for the main thread
 	make_stack(process->pagetree,main_thread);
 
-	main_thread->state->fs = 4;		//heap segment
-	process->local_descriptor_table->pool[4] = data_segment_insert(header->heapsize,pag.SMALLPAGE);	//NOTE HARDENING
-	main_thread->state->gd = 5;		//thread local storage segment
+	main_thread->state->ds = 4;		//heap segment
+	process->local_descriptor_table->pool[4]
+	data_segment_insert(header->heapsize,pag.SMALLPAGE);	//NOTE HARDENING
+	main_thread->state->fs = 5;		//thread local storage segment
 	process->local_descriptor_table->pool[5] = data_segment_insert(header->tls_size,pag.SMALLPAGE);
 
 	main_thread->type = thread_types::APPLICATION;	//type for syscalls
