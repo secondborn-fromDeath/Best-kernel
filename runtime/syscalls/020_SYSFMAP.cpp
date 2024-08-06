@@ -27,8 +27,9 @@ void SYS_FMAP(ustd_t desc, ustd_t amount, ustd_t offset){
 
 	Virtual_fs * vfs = get_vfs_object(void);
 
-	ustd_t findex = process->descs->pool[desc]->findex;
-	File * file = &vfs->descriptions[findex];
-	thread->sys_retval = fmap(findex,amount,offset);
+	File * file = &vfs->descriptions[process->descs->pool[desc]->findex];
+	CONDITIONAL_SYSRET(thread,((file->meta.mode & permissions::WRITE)&&(process->owner_id != owner_ids::ROOT)),-2);
+
+	thread->sys_retval = fmap(process,file,amount,offset);
 	SYSRET;
 }
