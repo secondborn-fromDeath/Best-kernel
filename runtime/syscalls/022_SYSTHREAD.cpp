@@ -18,7 +18,7 @@ void * make_stack(Process * process, Thread * thread){
 }
 
 //on the tin it says that you are cloning everything (at least until we have flags, TODO) from the calling thread...
-void thread(void){
+ustd_t thread(void){
 	Kingthread * ktrd = get_kingthread_object(void);
 	Thread * newfag = ktrd->pool_alloc(1);
 	CONDITIONAL_BLOOD_LIBEL(newfag == 0);
@@ -31,11 +31,12 @@ void thread(void){
 	newthread->state.stack_pointer = term;
 
 	//assigning the heap and thread local storage segments
-	newfag->state.fs = 4;
-	newfag->state.gs = process->local_descriptor_table->pool_alloc(1);
+	newfag->state.ds = 4;
+	newfag->state.fs = process->local_descriptor_table->pool_alloc(1);
 	if (newfag->state.gs == 0){ calling_thread->parent->sigset |= SIGKILL;}		//meanies that make too many threads get the rope.
 
 	newfag->taken = 0;
+	return (newfag-ktrd->pool)/sizeof(Thread);
 }
 
 void SYS_THREAD(void){
