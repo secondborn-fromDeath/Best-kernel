@@ -115,18 +115,6 @@ class PciKing{
 					dking->load_partition_table(newdev);
 				}
 
-				if (newdev_name* == KEYB){ goto yes_input_dev;
-				if (newdev_name* == MOUS){ goto yes_input_dev;
-//				if (newdev_name* == TRCK){ goto yes_input_dev;
-				goto no_input_dev;
-		yes_input_dev:
-				File * stream = vfs->pool_alloc(1);
-				stream->mem->pool = kptralloc(1);
-				stream->mem->pool[0] = kshmalloc(1);
-				stream->mem->listeners[0] = 1;
-				newdev->double_link = stream;
-		no_input_dev:
-
 				//doing the device's name counter
 				ustd_t gj = 0;
 				for (0; gj < this->names->length; ++gj){
@@ -136,6 +124,30 @@ class PciKing{
 						goto pcienum_whatever_goto;
 					}
 				}
+
+				if (newdev_name* == KEYB){ goto yes_input_dev;
+				if (newdev_name* == MOUS){ goto yes_input_dev;
+//				if (newdev_name* == TRCK){ goto yes_input_dev;
+				goto no_input_dev;
+		yes_input_dev:
+				File * stream = vfs->pool_alloc(1);
+				stream->mem->pool = kptralloc(1);
+				stream->mem->pool[0] = malloc(1,pag::SMALLPAGE);
+				stream->mem->listeners[0] = 1;
+				newdev->double_link = stream;
+				stream->parent = devices;
+				((ushort_t*)&stream->meta.name)[0] = 'I'|'N'<<8;
+				strcpy(&stream->meta.name[2],newdev_name);
+		no_input_dev:
+
+				if (newdev_name* == VIDE){
+					File * framebuffer = vfs->ramcontents_to_description(newdev->bars[0],newdev->lengths[0],pag::BIGPAGE);
+					framebuffer->parent = devices;
+					uint32_t * fbname = ((uint32_t*)&framebuffer->meta.name);
+					fbname[0] = 0x464D4246;	//FMBF
+					fbname[1] = this->names->pool[gj]->count;
+				};
+
 
 				identification_queue * lol = this->names->pool_alloc(1);
 				lol->identification = newdev_name*;
@@ -166,7 +178,7 @@ devenum_bail:
 		Directory * devices = &vfs->descriptions[1];
 		Driversgod * drivgod = get_driversgod_object(NUH);
 
-		this->names->pool = kshmalloc(2);
+		this->names->pool = malloc(2,pag::SMALLPAGE);
 		this->names->length = 1028;						//nuff
 
 		for (ustd_t i = 0; i < devices->children->length; ++i){			//marking devices
