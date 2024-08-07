@@ -67,15 +67,15 @@ class DisksKing : Driver{
 		partition * pool : King.pool;		//config...
 	};
 	void load_partition_table(Device * disk){
-		void * second_sector = kshmalloc(1);	//gpt identification sector
+		void * second_sector = malloc(1,pag::SMALLPAGE);	//gpt identification sector
 		memset(second_sector,0,4096);
 		ulong_t * diskname = &disk->name;
 		dking->read(diskname*,512,second_sector,512);
 
 		ustd_t id = problem_ctl(PARTTABLES_ID,0,0,second_sector);
-		kshmfree(second_sector,1);
+		free(second_sector,1);
 
-		partition * data = kshmalloc(512);
+		partition * data = malloc(512,pag::SMALLPAGE);
 		memset(data,0,512*4096);
 		problem_ctl(PARTITION_TABLES,id, partition_table_actions::LOAD,data);
 		for (ustd_t t = 0; t < (4096*512)/sizeof(partition); ++t){
@@ -83,7 +83,7 @@ class DisksKing : Driver{
 				break;}
 			memcpy(this->partitions->pool_alloc(1),&data[t],sizeof(partition));
 		}
-		kshmfree(data,512);
+		free(data,512);
 	}
 	/*
 	The following functions on error simply fail and return the layer of recursion the error was met on (you should mount disks manually...)
@@ -110,7 +110,7 @@ class DisksKing : Driver{
 			destination = base+g*atom;
 			g += l;
 
-			uint64_t * data = kshmalloc(1);
+			uint64_t * data = malloc(1,pag::SMALLPAGE);
 			data[0] = parte->diskpos + reloff;
 			data[1] = mem_map(dev->d->thread->father->pagetree,destination,pagetype,l,cache.WRITEBACK);
 			data[2] = atom;
@@ -123,7 +123,7 @@ class DisksKing : Driver{
 			ioctl(fd,action,data);
 			disksking_read_called_whore:
 			mem_unmap(dev->d->runtime->pagetree,data[1],l,pagetype);
-			kshmfree(data,1);
+			free(data,1);
 			TKILL(kernel);
 		}
 	}
@@ -137,7 +137,7 @@ class DisksKing : Driver{
 
 		Partition * part = &this->partitions->pool[partition];
 
-		File * bystander = kshmalloc(512);
+		File * bystander = malloc(512,pag::SMALLPAGE);
 		memset(bystander,0,4096*512);
 
 		Thread * kernel; INIT_KERNEL_THREAD(kernel,tking);
@@ -145,13 +145,13 @@ class DisksKing : Driver{
 		memcpy(ret,bystander,sizeof(File));
 		mem_unmap(part->disk->d->runtime->pagetree,back,1);
 
-		kshmfree(bystander,512);
+		free(bystander,512);
 		TKILL(kernel);
 	}
 
 	enum filesystem_actions{ CREATE=5,REMOVE,};
 	void filesystem_request(Storage * proto, ustd_t action, auto * data){					//data must be smaller than a smallpage
-		File * bystander = kshmalloc(1);
+		File * bystander = malloc(1,pag::SMALLPAGE);
 		memcpy(bystander,proto,sizeof(File));
 		memcpy(bystander+sizeof(File),data,4096-sizeof(File)));
 
@@ -160,7 +160,7 @@ class DisksKing : Driver{
 		problem_ctl(2,this->partitions->pool[proto->part]->signature,action,bystander);			//and this is finally scaled all the way
 		memcpy(proto,bystander,sizeof(File));
 
-		kshmfree(bystander,1);
+		free(bystander,1);
 		TKILL(kernel);
 	}
 	#define mkfile(a){ filesystem_request(a,file_actions::CREATE)}
