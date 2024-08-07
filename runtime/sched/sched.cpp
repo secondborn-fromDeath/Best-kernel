@@ -152,10 +152,10 @@ extern void enter_ringthree(Thread * thread);
 	struct interrupt_stack{
 		uint64_t * errcode,rip,cs,rflags,rsp,ss;
 	};
-	void os_interrupt_handler_template(constexpr vector){		//there are supposed to be a lot of these in the binary
+	void exception_handler_template(constexpr vector){		//there are supposed to be a lot of these in the binary
 		ENTER_RINGZERO;
 		Thread * thread = get_thread_object(NUH);
-		thread->sys_retval = thread->state::accumulator;
+		thread->sys_retval = thread->state::accumulator;	//needed for some other function
 		(OS_INTERRUPTS::ROUTINES[vector])(NUH);
 		set_task_priority(0);
 		leave_ringzero(get_thread_object(NUH));
