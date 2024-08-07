@@ -90,12 +90,11 @@ ulong_t exec(File * source){
 	mm->vmtree_lay(process->pagetree);
 	ustd_t pagetype;	//whore...
 
+
+	//these are all supervisor..
 	//identity mapping the gdt
-	ulong_t * entry = mm->vmto_entry(process->pagetree,mm->gdt->pool,&pagetype);
-	for (ustd_t g = 0; g < source->meta.length; ++g){
-		entry[g] = mm->memreq_template(pag.SMALLPAGE,mode.MAP,cache.WRITEBACK,1) | mm->gdt->pool+4096*g;
-		entry[g] ^= 1<<2;		//setting pages as supervisor only
-	}
+	mm->map_identity(pagetree,mm->gdt->pool,tosmallpage(MAX16BIT),cache::WRITEBACK,1);
+
 	//identity mapping all of the "shared" system segments (interrupts + tss)
 	ulong_t gdt = mm->gdt->pool;
 	for (ustd_t g = 0; g < GDT_LOW_ENTRIES; ++g){
@@ -103,19 +102,13 @@ ulong_t exec(File * source){
 		ulong_t length;
 		extract_segment_statistics(&gdt[g],&start,&length);
 
-		void * thing = mm->mem_map(process->pagetree,start,pag.SMALLPAGE,MAX16BIT);
-		entry = mm->vmto_entry(process->pagetree,thing);
-		for (ustd_t y = 0; y < lenght/4096; ++y){
-			entry[y] |= (1<<2) | (1<<63);						//executable because itetrrupts and supervisor obviously
-		}
+		mm->map_identity(process->pagetree,start,tosmallpage(length),cache::WRITEBACK,1);
 	}
+
 	//identity mapping the kernel
 	void * kernelcode = get_kernelcode_pointer(NUH);
 	ulong_t codesize = get_kernelcode_size(NUH);
-	ulong_t something = mm->mem_map(process->pagetree,actual_ldt,pag.SMALLPAGE,codesize,cache.WRITEBACK);
-	for (ustd_t o = 0; o < ldtlen; ++o){
-		something[o] |= (1<<2) | (1<<63);
-	}
+	mm->map_identity(process->pagetree,kernelcode,codesize,cache::WRITEBACK,1);
 
 	//-whatever- mapping the ldt
 	process->local_descriptor_table->segment_selector = (mm->gdt->pool_alloc(1)-mm->gdt->pool)/16;		//NOTE i dont think there is a need to add checks here but know that if the divide by zero happens we are double faulting...
@@ -128,7 +121,8 @@ ulong_t exec(File * source){
 		something[o] |= 1<<2;
 	}
 
-	//mapping the executable file
+
+	//-whatever- mapping the executable file
 	process->userspace_code = mm->mem_map(process->pagetree,source->shared_contents->pool[0],pagetype,1,cache.WRITEBACK);
 	main_thread->state->instruction_pointer = header->start + entry;
 	ustd_t pagetype;
