@@ -222,6 +222,9 @@ class IOapic{
 	ustd_t get_fixedmode_mask(void){
 		return 0;
 	}
+	ustd_t get_NMImode_mask(void){
+		return 4<<8;
+	}
 	void set_ipi_lowreg(ustd_t mask){
 		ushort_t * lapic = get_lapic_pointer(NUH);
 		lapic[0x302/2] = mask>>16;		//writing to the high word
@@ -242,8 +245,9 @@ class IOapic{
 		lapic[0x300/4] = get_exselfipi_mask(NUH) | action;
 	}
 	#define wake_brothers(void){ brothers_poke(ints::WAKE)}
-	#define brothers_sleep(void){brothers_poke(ints::SLEEP);}
-	#define highprio_sleep_brothers(void){ brothers_poke(ints::HIGHPRIO_SLEEP);}
+	#define brothers_sleep(void){brothers_poke(ints::SLEEP)}
+	#define highprio_sleep_brothers(void){ brothers_poke(ints::HIGHPRIO_SLEEP)}
+	#define highprio_wake_brother(void){ brothers_poke(ints::WAKE)}
 
 	void family_poke(ustd_t interrupt){
 		ustd_t * lapic = get_lapic_pointer(NUH);
@@ -258,20 +262,57 @@ class IOapic{
 	void iret(void){
 		__asm__ volatile("IRETQ\n\t");
 	}
+	//reminder these can only happen in userspace because in kernel we are blocking
 	void highprio_halt(void){
 		__asm__ volatile(
-		"MOVq	(%%rip),%%rax\n\t"
-		"MOVq	%%rax,%%cr12\n\t"
-		"HLT\n\t"
-		);
+		"MOVQ	%%cr8,%%rax\n\t"
+		"MOVQ	%%rax,%%cr7\n\t"
+		"JMP	+0\n\t"
+		:::);
+		set_task_priority(14);
+		halt(void);
 	}
 	void halt(void){
-		set_task_priority(0);			//we want the hardware to help us out with not overworking one processor
-		highprio_halt(NUH);
+		INTERRUPT_ATOMIC(
+		void * newstack = kshmalloc(1,pag::SMALLPAGE);
+		void * oristack = get_stack_pointer(NUH);
+		memcpy(newstack,oristack,sizeof(interrupt_stack));
+		)
+		__asm__ volatile(
+		"MOVQ	%%rax,%%cr1\n\t"
+		"JMP	+0\n\t"
+		"HLT\n\t"
+		::"r"(newstack):);
 	}
 	void wake(void){
+		set_task_priority(14);
+		void * backtrace;
+		void * tpr;
 		__asm__ volatile(
-		"MOVq	%%cr12,%%rax\n\t"
-		"JMP	%%rax\n\t"
-		);
+		"MOVQ	%%cr1,%%rax\n\t"
+		"MOVQ	%%cr7,%%rcx\n\t"
+		:"=r"(backtrace),"=r"(trp)::);
+		memcpy(get_stack_pointer(NUH),backtrace,sizeof(interrupt_stack));
+		free(backtrace,1);
+		iret(NUH);
+	}
+	#define boot_wake iret
+	void NMI_enter(void){
+		interrupt_stack * sp = get_stack_pointer(NUH);
+		set_stack_pointer(sp->stack_pointer);
+		LONGJUMP(sp->instruction_pointer);
+	}
+	void NMI_return(void){
+		task_state_segment * tss = get_tss(NUH);
+		void * backup = get_stack_pointer(NUH);
+		set_stack_pointer(tss->ist[2-1]);
+		interrupt_stack * retbish = get_stack_pointer(NUH);
+		retbish->stack_pointer = backup;
+		retbish->instruction_pointer = __builtin_return_address(0);		//gcc dependant
+		iret(NUH);
+	}
+	#define INTERRUPT_ATOMIC(code){\
+		NMI_enter(NUH);
+		code\
+		NMI_return(NUH);
 	}
