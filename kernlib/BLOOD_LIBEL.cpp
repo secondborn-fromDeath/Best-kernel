@@ -17,6 +17,5 @@ void BLOOD_LIBEL(void){
 			}
 		}
 	}
-	brothers_sleep(void);				//instakilling the process, there is a guarantee that all threads of the SACRIFICE will die before the caller gets executed
-	champion->sigset |= signals.SIGKILL;		//*will* cause visible lag but that is a good thing, reboot your machine.
+	champion->sigset |= signals.SIGKILL;
 }
