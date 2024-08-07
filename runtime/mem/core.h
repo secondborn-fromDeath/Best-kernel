@@ -87,7 +87,7 @@ class Kingmem{
 		__non_temporal process->calendar = 0;
 		return NULLPTR;
 	}
-	void vmtree_lay(ulong_t * location){	//in gigs
+	void vmtree_lay(ulong_t * location){
 		void * default_entry = memreq_template(pag::BIGPAGE,mode::SEGFAULT,cache::WRITEBACK);
 		ustd_t level_length = 512*sizeof(void *);
 
@@ -148,18 +148,19 @@ class Kingmem{
 		return vm;
 	}
 	//useful for identity mapping stuff, returns the entry into the smallpages tables
-	ulong_t * physto_offset(Process * process, void * phys){
+	ulong_t * physto_offset(void * pagetree, void * phys){
 		ulong_t offset = 512*8;
 		for (ustd_t j = 0; j < pag::SMALLPAGE; ++j){
 			offset += 512*offset;		//skipping the higher pagetables
 		}
 		ulong_t second = 0;								//now computing the offset using the pointer
+		ustd_t g = this->get_multi_from_pagetype(y);
 		for (ustd_t y = 0; y < pag::SMALLPAGE; ++y){
-			ustd_t g = this->get_multi_from_pagetype(y);
-			second += phys/g(g*4096);
+			second |= g*(phys<<(64-g*9+12)>>55;
 			phys %= g;
+			g /= 512;
 		}
-		return process->pagetree+offset+second;
+		return pagetree+offset+second;
 	}
 	ustd_t deallocate_vm(Process * process, void ** physrets, void * vm, ustd_t pages_number){
 		process->stream_init(NUH);
@@ -276,6 +277,12 @@ class Kingmem{
 			off[h] = templ;
 		}
 	}
+	void map_identity(void * pagetree, void * target, ustd_t pages_number, ustd_t cache, ustd_t user){
+		uint64_t * entry = physto_offset(pagetree,target);
+		for (ustd_t i = 0; i < pages_number; ++i){
+			entry[i] = memreq_template(pag::SMALLPAGE,modes::MAP,cache,1) | user<<2;	//supervisor/user...
+		}
+	}
 	void * mem_map(void * pagetree, void * target, ustd_t pagetype, ustd_t pages_number, ustd_t cache){
 		void * templ = memreq_template(pagetype,mode::MAP,cache);
 		void * ret = vmtree_fetch(pagetree,pages_number,pagetype);
@@ -389,8 +396,7 @@ class Kingmem{
 		}
 		__non_temporal process->calendar = 0;
 	}
-	__attribute__((interrupt)) void fault_handler(void){
-		enter_ringzero(NUH);
+	void pagefault_handler(void){
 		Process * process = get_process_object(NUH);
 		Kingmem * mm = get_kingmem_object(NUH);
 		void * vm = __asm__("mov %%cr2,%%rax\n\t");
