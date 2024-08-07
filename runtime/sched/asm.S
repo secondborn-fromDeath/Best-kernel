@@ -1,5 +1,5 @@
 #these are to be called by functions in sched.cpp
-#NOTE, gets parsed by a prepreprocessor with sched/core.h as input
+
 
 store_state:#							this not preserving C callconv is fine (compiler wasting push and pop instructions is whatever srsly)
 MOVQ	%%rsp,%%cr14
@@ -27,13 +27,22 @@ MOVQ	%%r12,QWORD PTR thread.state.twelve(%%rsp)
 MOVQ	%%r13,QWORD PTR thread.state.thirteen(%%rsp)
 MOVQ	%%r14,QWORD PTR thread.state.fourteen(%%rsp)
 MOVQ	%%r15,QWORD PTR thread.state.fifteen(%%rsp)
-MOVQ	%%rax,%%rsp
-RET
+MOVQ	QWORD PTR interrupt_stack.instruction_pointer(%%rax),%%rcx
+MOVQ	QWORD PTR thread.state.instruction_override(%%rsp),%%rdx
+TEST	%%rdx,%%rdx
+JZ 	ststate_load_ip
+MOVQ	rcx,QWORD PTR thread.state.instruction_override(%%rsp)
+JMP	endof_instructions_query
+ststate_load_ip:
+MOVQ	rcx,QWORD PTR thread.state.instruction_pointer(%%rsp)
+endof_instruction_query:
+EXCHG	%%rax,%%rsp
+RET#								returns the thread pointer
 
 enter_ringzero:
 MOVQ	%%rax,%%cr14
 JMP	+0
-MOVQ	$15,%%rax#			fast task priority
+MOVQ	$14,%%rax#			fast task priority
 MOVQ	%%rax,%%cr8
 JMP	+0
 MOVQ	%%cr13,%%rax#			ringzero pagetree
@@ -48,37 +57,48 @@ CALL	store_state
 RET
 
 leave_ringzero:
-MOVQ	8(%%rsp),%%rax#				thread pointer
+MOVQ	8(%%rsp),%%rax#								thread pointer
 MOVQ	%%cr8,%%rcx
 MOVQ	%%rcx,%%cr3
-JMP	+0
-XORQ	%%edx,%%edx#				stack segment
+JMP	+0#									constructing the interrupt return stack
+XORQ	%%edx,%%edx#								stack segment
 PUSHQ	%%rdx
-MOVQ	thread.state.stack_pointer(%%rax),%%rdx#stack pointer
+MOVQ	QWORD PTR thread.state.stack_pointer(%%rax),%%rdx#			stack pointer
 PUSHQ	%%rdx
-XORQ	%%edx,%%edx#				code segment
+XORQ	%%edx,%%edx#								code segment
 PUSHQ	%%rdx
-MOVQ	thread.state.instruction_pointer(%%rax),%%rdx#instruction pointer
+MOVQ	QWORD PTR thread.state.instruction_override(%%rax),%%rdx#		instruction pointer
+TEST	%%rdx,%%rdx
+JNZ	lvrin_overridden
+MOVQ	QWORD PTR thread.state.instructioin_pointer(%%rax),%%rdx
+lvrin_overriden:
+PUSHQ	%%rdx#									^^^
+MOVQ	thread.state.flags(%%rsp),%%rdx#					flags register
 PUSHQ	%%rdx
-MOVQ	thread.state.flags(%%rsp),%%rdx#	flags register
-PUSHQ	%%rdx
+
 MOVQ	%%rsp,%%cr14
 JMP	+0
-MOVQ	%%rax,%%rsp#				rsp now the thread pointer
-MOVQ	thread.state.accumulator(%%rsp),%%rax
-MOVQ	thread.state.counter(%%rsp),%%rcx
-MOVQ	thread.state.rdx(%%rsp),%%rdx
-MOVQ	thread.state.rbx(%%rsp),%%rbx
-MOVQ	thread.state.string_dest(%%rsp),%%rdi
-MOVQ	thread.state.string_source(%%rsp),%%rsi
-MOVQ	thread.state.frame_pointer(%%rsp),%%rbp
-MOVQ	thread.state.eight(%%rsp),%%r8
-MOVQ	thread.state.nine(%%rsp),%%r9
-MOVQ	thread.state.ten(%%rsp),%%r10
-MOVQ	thread.state.evelen(%%rsp),%%r11
-MOVQ	thread.state.twelve(%%rsp),%%r12
-MOVQ	thread.state.thirteen(%%rsp),%%r13
-MOVQ	thread.state.fourteen(%%rsp),%%r14
-MOVQ	thread.state.fifteen(%%rsp),%%r15
+MOVQ	%%rax,%%rsp#								rsp now the thread pointer
+MOVQ	QWORD PTR thread.state.accumulator(%%rsp),%%rax
+MOVQ	QWORD PTR thread.state.counter(%%rsp),%%rcx
+MOVQ	QWORD PTR thread.state.rdx(%%rsp),%%rdx
+MOVQ	QWORD PTR thread.state.rbx(%%rsp),%%rbx
+MOVQ	QWORD PTR thread.state.string_dest(%%rsp),%%rdi
+MOVQ	QWORD PTR thread.state.string_source(%%rsp),%%rsi
+MOVQ	QWORD PTR thread.state.frame_pointer(%%rsp),%%rbp
+MOVQ	QWORD PTR thread.state.eight(%%rsp),%%r8
+MOVQ	QWORD PTR thread.state.nine(%%rsp),%%r9
+MOVQ	QWORD PTR thread.state.ten(%%rsp),%%r10
+MOVQ	QWORD PTR thread.state.evelen(%%rsp),%%r11
+MOVQ	QWORD PTR thread.state.twelve(%%rsp),%%r12
+MOVQ	QWORD PTR thread.state.thirteen(%%rsp),%%r13
+MOVQ	QWORD PTR thread.state.fourteen(%%rsp),%%r14
+MOVQ	QWORD PTR thread.state.fifteen(%%rsp),%%r15
 MOVQ	%%cr14,%%rsp
-IRETQ#						loading sp and ip through iretq
+IRETQ#										loading sp and ip through iretq
+
+
+
+
+
+
