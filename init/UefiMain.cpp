@@ -15,12 +15,12 @@ ustd_t UefiMain(void * image_handle, void * efisystab){
 	ustd_t drivers_number = fetch_drivers_basics(boottab,&config);
 	image_loaded * driver_pointers[drivers_number];				//...stack overflow in a bootloader? lel
 	image_loaded * info_pointers[drivers_number];
-	efimap_returns mapdata;
-	get_uefi_memmap(image_handle,efisystab,&mapdata,boottab);
-	char * initsys = setup_kernel(efisystab,boottab,&mapdata);		//from here on out you can use the kernel memory allocation functions
+
+
+	char * initsys = setup_kernel(image_handle,efisystab,boottab,&mapdata);	//new pagetree was set...
+	void * pagetree = get_ringzero_pagetree(NUH);
 	Pci * pci = get_pci_object(NUH);
-	pci->pci_init(NUH);
-	enact_IO_context(driver_pointers,mapdata);
+	enact_IO_context(vmto_phys(pagetree,driver_pointers),vmto_phys(pagetree,mapdata));
 	setup_gdt(NUH);
 	setup_idt(NUH);
 	ustd_t len, init_index;
@@ -28,7 +28,7 @@ ustd_t UefiMain(void * image_handle, void * efisystab){
 	exec(init_index);
 	ustd_t root = vfs->mount(root_disk,root_partition_pos);
 	exit_bootservices(mapdata->mapkey,boottab);
-	assign_interrupt_vectors(NUH);						//inside here we are initializing gdt vectors by the way
+	assign_interrupt_vectors(NUH);
 	sti(NUH);
 	initialize_brothers(NUH);
 	routine(NUH);
