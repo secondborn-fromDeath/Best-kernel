@@ -12,23 +12,19 @@ struct efiheader{
 };
 struct efimap_returns{
 	uint64_t * mapsize;
-	void ** map;
+	efimap_descriptor ** map;
 	uint32_t * mapkey;
 	uint32_t descriptor_size;
 	uint32_t descriptor_version;
 };
 struct efimap_descriptor{
+	uint32_t type;
 	void * phys_start;
 	void * virt_start;
 	uint32_t pages_number;
-	uint32_t memtype;
+	uint32_t attribute;
 	uint32_t descriptor_size;
 	uint32_t pad;
-};
-struct loadfile_args{
-	char * filename;
-	void * file;
-	uint64_t length;
 };
 #define UEFI_LOADED_IMAGE_PROTOCOL 0x5B1B31A1956211d283F00A0C969723B
 volatile struct image_loaded{	//page 248, this is peak confusion tbh, osdev are larpers LMAO
@@ -66,6 +62,11 @@ void * get_bootservices_table(void * efisystab){
 	void ** h = efisystab+sizeof(efiheader)+68;
 	return h*;
 }
+void * get_runtimeservices_table(void * efisystab){
+	void ** h = efisystab+sizeof(efiheader)+60;
+	return h*;
+}
+
 /*
 This is a function that allows the C calling convention to interface with the UEFI callign convention
 Any argument is passed as a qword*/
@@ -143,10 +144,10 @@ void exit_boot_services(void * image_handle, uint64_t mapkey, ulong_t * bootserv
 	auto * uefi_exbootserv = (bootservices_table+sizeof(efiheader))[208/8];
 	uefi_wrapper(uefi_exbootserv,&image_handle);					//DANGER "optimization"
 }
-image_loaded * loadfile(loadfile_args * args, ulong_t * bootservices_table, void * parent_handle){
+image_loaded * loadfile(char * name, ulong_t * bootservices_table, void * parent_handle){
 	auto * loadfile = (bootservices_table+sizeof(efiheader))[176/8];
 	void * newimage_handle;
-	uint64_t array[] = [NULLPTR,parent_handle,args->name,NULLPTR,NULLPTR,NULLPTR,&newimage_handle,];
+	uint64_t array[] = [NULLPTR,parent_handle,name,NULLPTR,NULLPTR,NULLPTR,&newimage_handle,];
 
 	uefi_wrapper(loadfile,array,7);
 
@@ -164,21 +165,41 @@ void boot_get_framebuffer(auto * boottab, void ** fb_pointer, uint64_t * fb_size
 	fb_size* = pass->framebuffer_size;
 }
 
-namespace uefi_memtypes{	//dont ask to make sense of this because it simply makes no sense and i want no part of it.
-#define STRONG_UNCACHEABLE 0x1
-#define WRITE_COMBINING 0x2
-#define WRITETHROUGH 0x4
-#define WRITEBACK 0x6
-#define WEAK_UNCACHEABLE 0x8
-#define WRITEPROTECT 0x1000
-#define SUPPORTS_READ_PROTECTION 0x2000
-#define SUPPORTS_EXECUTION_PROTECTION 0x4000
-#define PERSISTENT_MEMORY 0x8000
-#define RELIABLE_MEMORY 0x100000
-#define READ_ONLY 0x200000
-#define SPECIAL_PURPOSE 0x400000
-#define SUPPORTS_CRYPTOGRAPHY 0x800000
-#define NEEDS_VIRTUALMAPPING 0x8000000000000000
-#define READ_ISA_MASK 0x0FFFFFFFFFFFFFFF			//i simply ignore this because i am only doing x64 right now and the above are more than enough
+namespace uefi_memory{
+	namespace attributes{
+	#define STRONG_UNCACHEABLE 0x1
+	#define WRITE_COMBINING 0x2
+	#define WRITETHROUGH 0x4
+	#define WRITEBACK 0x6
+	#define WEAK_UNCACHEABLE 0x8
+	#define WRITEPROTECT 0x1000
+	#define SUPPORTS_READ_PROTECTION 0x2000
+	#define SUPPORTS_EXECUTION_PROTECTION 0x4000
+	#define PERSISTENT_MEMORY 0x8000
+	#define RELIABLE_MEMORY 0x100000
+	#define READ_ONLY 0x200000
+	#define SPECIAL_PURPOSE 0x400000
+	#define SUPPORTS_CRYPTOGRAPHY 0x800000
+	#define FIRMWARE_RUNTIME 0x8000000000000000
+	#define READ_ISA_MASK 0x0FFFFFFFFFFFFFFF
+	};
+	enum boot_types{
+		RESERVED,
+		LOADER_CODE,
+		LOADER_DATA,
+		BOOTSERV_CODE,
+		BOOTSERV_DATA,
+		RUNSERV_CODE,
+		RUNSERV_DATA,
+		__CONVENTIONAL__,	//the one actually usable.
+		UNUSABLE,
+		ACPI_RECLAIM,
+		ACPI_FIRMWARE_RESERVED,
+		MMIO,
+		MAPPED_SERIAL_PORTS,
+		MICROCODE,
+		PERSISTENT_MEMORY,	//usable NONVRAM
+	};
+	enum runtime_types;
 };
 namespace uefi_memtypes_ISA_mask;
