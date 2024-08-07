@@ -22,6 +22,7 @@ ulong_t gettime_nanos(void){		//from the start of the day
 	get_timespec(&rtcret);
 	return rtcret->hour*3600*1000000000 + rtcret->minute*60*10000000000 + rtcret->second*1000000000 + rtcret->nanosecond;
 }
+#define gettime_millis(void){ gettime_nanos(NUH)/1000;}
 ulong_t gettime_epoch(void){	//returns seconds
 	struct rtc_time rtcret;
 	get_timespec(&rtcret);
