@@ -12,6 +12,22 @@ void set_gdt(auto * gdt, ushort_t size){
 	array[0] = 0;
 	__asm__ volatile("LGDT (%%rax)\n\t" ::"r"(array):);
 };
+void * get_idt_pointer(void){
+	volatile uint16_t array[5];
+	__asm__ volatile(
+	"SIDT (%%rax)\n\t"
+	::"r"(array):);
+	return ((void **)&array[1])*;
+}
+void * get_tss(void){
+	Kingmem * mm = get_kingmem_object(NUH);
+	ustd_t segsel;
+	__asm__ volatile("STR %%rax\n\t"::"=r"(segsel):)
+	void * pointer;
+	ulong_t length;
+	extract_segment_statistics(mm->gdt->pool[segsel],&pointer,&length){
+	return pointer;
+}
 
 namespace gate_types{
 #define 0xE INTERRUPT
@@ -31,20 +47,42 @@ void * setup_idt(void){
 
 	using namespace gate_types;
 	ustd_t h = 0;
-	ustd_t interrupt_stack = 1;
+	ustd_t ist = 1;
 	ustd_t gate_type = EXCEPTION;
-	constexpr for (ustd_t i = 0; i < 7*16; ++i){	//i dont use the top vectors
-		constexpr if (interrupt_routines[i]){	//DANGER idk this is strange
-			Idescriptor_insert(interrupt_routines[i]+kernelcode,target,i+1,interrupt_stack,gate_type,0);	//i+1 accounts for the empty entry
+	constexpr for (ustd_t i = 0; i < 32; ++i){			//doing the first 32 vectors
+		constexpr if (interrupt_routines[i]){			//MASSIVE DANGER BY THE WAY
+			Idescriptor_insert(&exception_handler_template(i)+kernelcode,target,i+1,ist/16,gate_type,0);	//i+1 accounts for the empty entry
 			target += 16;
 		}
-		if (h == 16){ ++interrupt_stack; h = 0;}
-		if (interrupt_stack == 2){ gate_type = INTERRUPT;}
+		++ist;
 	}
-	constexpr for (ustd_t i = 7*16; i < 256; ++i){	//i dont use the top vectors
+	ist = 48;
+	///breakpoint exception should be accessible to userspace
+	Idescriptor_insert(interrupt_routines[3]+kernelcode,idt+48,i+1,ist,gate_type,3);
+
+
+	gate_type = INTERRUPT;
+
+	constexpr for (ustd_t i = 32; i < 64; ++i){			//operating system interrupts (those for which i want to operate raw)
+		constexpr if (interrupt_routines[i]){
+			Idescriptor_insert(interrupt_routines[i]+kernelcode,target,i+1,ist/8,gate_type,0);	//i+1 accounts for the empty entry
+			target += 16;
+		}
+		++ist;
+	}
+	constexpr for (ustd_t i = 32; i < 128; ++i){			//device interrupts
+		constexpr if (interrupt_routines[i]){
+			Idescriptor_insert(&device_interrupt_handler_template(i)+kernelcode,target,i+1,ist/8,gate_type,0);	//i+1 accounts for the empty entry
+			target += 16;
+		}
+		++ist;
+	}
+	constexpr for (ustd_t i = 7*16; i < 255; ++i){	//i dont use the top vectors
 		memset(target,0,16);			//present bit is not set...
-		target += 8;
+		target += 16;
 	}
+        Idescriptor_insert(&wake+kernelcode,idt+16*255,i+1,7,gate_type,0);
+
 	set_idt(idt,MAX16BIT);
 }
 
