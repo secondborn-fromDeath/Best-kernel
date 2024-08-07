@@ -1,131 +1,182 @@
-using namespace OS_INTERRUPTS;
-
-void set_pagetree(void * pagetree){
+void * get_ringzero_pagetree(NUH){
 	__asm__ volatile(
-	"MOVq	%%rax,%%cr3\n\t"
-	"JMP	+0\n\t"
-	::"r"(pagetree):);
+	"MOVQ	%%cr13,%%rax\n\t"
+	"RET\n\t"
+	:::);
 }
+struct boot_translations{
+	void * imagehandle;
+	void * efisystab;
+	void * kerntree;		//comes bundled with kerndata
+	uint64_t mapkey;
+	void * phys_ram_table;
+	ulong_t sizeof_memory;
+	image_loaded * configuration;
+};
 //returns the string of the init system path
-char * setup_kernel(ulong_t * efisystab, efimap_returns * data, void * bootservices_table, loaded_image ** driver_pointers, ustd_t drivnum){
-	efimap_descriptor * map = data->map;
-	ustd_t i;
-	ulong_t sizeof_memory = 0;
-	for (i = 0; i < data->mapsize; ++i){ sizeof_memory += map[i]->pages_number;}
-
-	ustd_t needtree = 512+(sizeof_memory>>30)*(512+gigs*(512*512*512));	//4level paging
-	ustd_t needfull += sizeof(ProcessorsGod)+sizeof(IOapicGod)+sizeof(Kontrol)+sizeof(Kingmem)+sizeof(King)*8;		//pagetree plus key data
+boot_translations * setup_kernel(void * image_handle, ulong_t * efisystab, void * bootservices_table){
+	ustd_t needtree = 512*512*4096;						//2mb, 4level paging
+	constexpr ustd_t needfull = needtree+FULLSINGLETONS;			//pagetree plus key data
 	needfull = tosmallpage(needfull);
 
-	ulong_t * kerndata = uefi_allocate_pages(needfull, bootservices_table);
-	__asm__(
-	"MOVq	%%rax,%%cr13"
-	"JMP	+0\n\t"
-	"ADDq	%%rcx,%%rax\n\t"
-	"MOVq	%%rax,%%cr6\n\t"	//this unused control register is used as the base for all of the get_XXX functions...
-	"JMP	+0\n\t"
-	::"r"(kerndata),"r"(needtree):);
-
-	Kingmem *pOOP = NULL;
-	pOOP->vmtree_lay(kerndata,sizeof_memory>>30);
-
-	set_pagetree(kerndata);
+	void * kerntree = uefi_allocate_pages(needfull+1,bootservices_table);
+	Kingmem *pOOP = kerntree+needfull*4096;
+	volatile boot_translations * trans = pOOP+sizeof(Kingmem);
 
 
-	ACPI_driver * acpi = kerndata+needtree;
-	acpi->RSDP = efisystab[72/8];
-	acpi->env_init(void);		//NOTE DANGER this is the "configuration tables" entry, acpi spec says that the rsdp should be somewhere in the efisystab but it fucking isnt
-
-	Kontrol * ctrl = kerndata+needtree;
-	ctrl* ={
-		.efi_funcs = get_runtime_services_table(void);
-		.shutdown_port = acpi->get_shutdown_port(void);
-	};
-
-	Kingmem mm = ctrl+sizeof(Kontrol);
-	mm* ={
-		.vm_ram_table = kerndata;
-		.phys_ram_table = map[i]->phys_start;	//NOTE check if real
-		.paging = 4;
-		.sizeof_ramdisk = sizeof_memory-0x100000000;	//NOTE needs porting to x86 32bit
-	};
-
-	ulong_t * stab = kerndata + (sizeof_memory>>30)+((sizeof_memory>>30)*512*512);	//skipping over to SMALLPAGES, see runtime/mem/core.h/vmtree_lay()
-	ustd_t page_counter = 0;
-	for (ustd_t u = 0; u < data->mapsize; ++u){	//reserving memory that is not for the kernel's userspace
-		if !(map[u]->type & MOST_RELIABLE){
-			mm->manipulate_memory(map[u]->pages_number,pag.SMALLPAGE,commands.SET);
-		}
-		for (ustd_t l = 0; l < map[u]->pages_number; ++l){
-			stab[page_counter] = memreq_template(pag.SMALLPAGE,mode.MAP,cacheability,0);	//DANGER i think 0 is no exec right???
-			++page_counter;
-		}
+	for (ustd_t i = 0; i < mapdata->mapsize; ++i){
+		trans->sizeof_memory += map[i]->pages_number;
 	}
 
-	ProcessorGod * processorsgod = acpi + sizeof(ACPI_driver);			//this is the culprit
-	IOapicGod * ioapic_god = processorsgod + sizeof(ProcessorGod);
+	void * virtu_ramtab = uefi_allocate_pages(sizeof_memory/4096/8,bootservices_table);
 
-	acpi->build_ioapic_and_processors_array(ProcessorsGod->pool, IOapicGod->pool);
+        efimap_returns mapdata;
+        get_uefi_memmap(image_handle,efisystab,&mapdata,boottab);
+	efimap_descriptor * map = mapdata->map;
 
-	Kingprocess * processking = ioapic_god + sizeof(IOapicGod);
-	Kingthread * threadking = processking + sizeof(King);
-	Virtual_fs * vfs = descriptorsking + sizeof(King);
-	Kingptr * pointersking = vfs + sizeof(King);
-	Kshm * shm_king = pointersking + sizeof(King);
-	SyscallsGod * sgod = runtimemodking + sizeof(King);
-	DriversGod * drivgod = shm_king + sizeof(King);
-	DriverProcessGod * runtimemodking = drivgod + sizeof(King);
-	Taskpimp * taspimp = runtimemodking + sizeof(DriverProcessGod);
+	for (ustd_t i = 0; i < mapdata->mapsize; ++i){
+		if (map[i]->virt_start == kerntree){ trans->kerntree = map[i]->phys_start;}
+		else if (map[i]->virt_start == efisystab){ trans->efisystab = map[i]->phys_start;}
+		else if (map[i]->virt_start == virtu_ramtab){ trans->phys_ram_table = map[i]->phys_start;}
+	}
+
+	__asm__ volatile(		//control regs used in the get_whatever functions, see initialize_brothers for a full control register reference
+	"MOVQ	%%rax,%%cr13"
+	"JMP	+0\n\t"
+	"ADDQ	%%rcx,%%rax\n\t"
+	"MOVQ	%%rax,%%cr6\n\t"
+	"JMP	+0\n\t"
+	::"r"(phystree),"r"(needtree):);
+
+	pOOP->vmtree_lay(kerntree);
+	pOOP->phys_mem_array = uefi_allocate_pages(sizeof_memory/4096/8,bootservices_table);
 
 	/*
 	ugly...
 	basically I am extracting 4 values from the config file and assigning memory to the structures
-	NOTE HARDENING		for now there are no integrity checks at all...
 	*/
 	ulong_t string[8];
         string[0] = 0x2F6B65726E2E6366;         //"/kern.cf"
 	string[1] = NULL;
-	loadfile_returns data;
-	char * config = loadfile(string,bootservices_table,&data);
-	char something = '#'|('\n'<<8);
-	ustd_t offset = 0;			//updated throughout
-	ustd_t val;
+	trans->configuration = uefi_loadfile(string,bootservices_table,image_handle);
 
-	#define INITIALIZE_POOL_BASED_ON_CONFIG(x){	\
-	val = atoi_special(data->file,2,&something,&offset);	\	//NOTE HARDENING
-	x->length = val/sizeof(x->pool*);	\
-	x->pool = malloc(tosmallpage(val),pag.SMALLPAGE);	\
+	get_uefi_memmap(image_handle,efisystab,&mapdata,boottab);		//updating the key
+	map = memmap->map;
+	trans->mapkey = memmap->mapkey;
+
+	for (ustd_t i = 0; i < mapdata->mapsize; ++i){
+		using namespace uefi_memory::attributes;	//abilities of the block device
+		using enum uefi_memory::boot_types;		//what it is being used for
+		//using enum cache;				//cache values translation
+		if !(map[i]->attributes & __CONVENTIONAL__){
+			pOOP->manipulate_phys(map[i]->phys_start,map[i]->pages_number,pag::SMALLPAGE,actions::SET);
+			continue;
+		}
+
+		ustd_t cache = cache::WRITEBACK;
+		if (map[i]->memtype & STRONG_UNCACHEABLE){
+				cache = cache::STRONG_UNCACHEABLE;}
+		else if (map[i]->memtype & WRITE_COMBINING){
+				cache = cache::WRITE_COMBINING;}
+		else if (map[i]->memtype & WRITETHROUGH){
+				cache = cache::WRITETHROUGH;}
+		else if (map[i]->memtype & WRITEBACK){
+				cache = cache::WRITEBACK;}
+		else if (map[i]->memtype & WEAK_UNCACHEABLE){
+				cache = cache::WEAK_UNCACHEABLE;}
+		else if  (map[i]->memtype & WRITEPROTECT){
+				cache = cache::WRITEPROTECT;}
+		pOOP->map_identity(kerndata,map[i]->phys_start,map[i]->pages_number,cache,1);
 	}
-	INITIALIZE_POOL_BASED_ON_CONFIG(processking);
-	INITIALIZE_POOL_BASED_ON_CONFIG(threadking);
-	threadking->pool = mrealloc(threadking->pool,threadking->length*2);	//because of devices and protocol modules, this likely wont get optimized but it is less ugly i guess
-	INITIALIZE_POOL_BASED_ON_CONFIG(vfs);
 
-	kptr->pool = malloc(32,pag.MIDPAGE);		//pretty much "whatever" for now lol		NOTE NOTE NOTE NOTE LOOK HERE PLEASE
-	kshm->pool = malloc(32,pag.MIDPAGE);
+	boot_translations * eise;	//setting the pagetree with assembly to get around the compiler's limitations
+	__asm__ volatile(
+	"MOVQ	%%rax,%%cr8\n\t"
+	"JMP	+0\n\t"
+	"ADDQ	%%rcx,%%rax\n\t"
+	:"=r"(eise):"r"(trans->kerntree),"r"(needfull*4096+sizeof(Kingmem)):);
+
+	return finalize_kernel_data(eise);
+}
+
+boot_translations * finalize_kernel_data(boot_translations * data){
+	using namespace singletons;
+
+	void * st_base = data->kerntree+512*512*4096;
+
+	ACPI_driver * acpi = st_base+ACPI_OFFSET;
+	acpi->env_init(efisystab[76/8]);		//EFI_CONFIGURATION_TABLE or somethign
+
+	Kontrol * ctrl = st_base+KONTROL_OFFSET;
+	ctrl* ={
+		.efisystab = data->efisystab;
+		.efi_funcs = get_runtimeservices_table(data->efisystab);
+//		.shutdown_port = acpi->get_shutdown_port(NUH);
+		.shutdown_port = 0xB000;			//NOTE QEMU
+	};
+
+	Kingmem mm = st_base+KINGMEM_OFFSET;
+	mm* ={
+		.phys_ram_table = data->phys_ram_table;
+		.used_memory = 0;				//only counting what userspace processes use
+	};
+
+
+	ProcessorGod * processorsgod = st_base+PROCESSOR_OFFSET;
+	IOapicGod * ioapic_god = st_base+IOAPIC_OFFSET;
+
+	acpi->build_ioapic_and_processors_array(ProcessorsGod->pool, IOapicGod->pool);
+
+	Kingprocess * processking = st_base+PROCESS_OFFSET;
+	Kingthread * threadking = st_base+THREAD_OFFSET;
+	Kingdescriptors * kdesc = st_base+DESCRIPTOR_OFFSET;
+	Virtual_fs * vfs = st_base+VFS_OFFSET;
+	Kingptr * pointersking = st_base+POINTER_OFFSET;
+	DriversGod * drivgod = st_base+DRIVERS_OFFSET;
+	QuirksGod * qgod = st_base+QUIRKS_OFFSET;
+	Modules_removal_stack * modrm_sp = st_base+MODRM_STACK;
+	Disksking * dking = st_base+DISKSKING_OFFSET;
+	Pci * pci = st_base+PCI_OFFSET;
+
+	processking->type = hashtypes::SINGLE_POINTER;
+	threadking->type = hashtypes::SINGLE_POINTER;
+	kdesc->type = hashtypes::SINGLE_POINTER;
+	vfs->type = hashtypes::SINGLE_POINTER;
+	pointersking->type = hashtypes::SINGLE_POINTER;
+	drivgod->type = hashtypes::DOUBLE_POINTER;
+	qgod->type = hashtypes::DOUBLE_POINTER;
+	modrm_sp->type = hashtypes::DOUBLE_POINTER;
+	dking->type = hashtypes::DOUBLE_POINTER;
+	pci->env_init(NUH);
+
+	ushort_t something = '\n'|('#'<<8);
+	char * image_base = mm->vmto_phys(data->kerntree,data->configuration->image_base);
+	uint64_t val;
+	uint64_t offset = 0;
+	#define INITIALIZE_POOL_BASED_ON_CONFIG(x,y){	\
+	val = atoi_special(image_base,2,&something,&offset);	\	//NOTE HARDENING
+	x->length = val/sizeof(x->pool*);	\
+	x->pool = malloc(tosmallpage(val)*y,pag::SMALLPAGE);	\
+	}
+	INITIALIZE_POOL_BASED_ON_CONFIG(processking,1);
+	INITIALIZE_POOL_BASED_ON_CONFIG(threadking,2);	//because there are more threads than just application threads
+	INITIALIZE_POOL_BASED_ON_CONFIG(vfs,1);
+
+	kptr->pool = malloc((vfs->length+processking->length)/8,pag.MIDPAGE);	//if vfs is 8mill files then this is 8mill*512 which is 4bill, meaning 4 gigabytes...wtf
 
 
 	/*
 	Making all of the peculiar directories*/
-	vfs->descriptions[0]->meta.name[] = ['/',0,];
+	Directory * ROOT = &vfs->descriptions[0];
+	ROOT->meta.name[] = ['/',0,];
 	uint64_t whore = 0x646576;
-	vfs->directory_constructor(vfs->descriptions[1],vfs->descriptions[0],&whore);	//dev
+	vfs->directory_constructor(vfs->descriptions[1],ROOT,&whore);			//dev
 	whore = 0x6D6F6473;
-	vfs->directory_constructor(vfs->descriptions[2],vfs->descriptions[0],&whore);	//mods
+	vfs->directory_constructor(vfs->descriptions[2],ROOT,&whore);			//mods
 
-	void * fb; uint64_t fb_length;
-	boot_get_framebuffer(&fb,&fb_length);
-	Storage * framebuffer = vfs->ramcontents_to_description(fb,fb_length,pag.MIDPAGE);
-	vfs->descriptions[1]->children->pool_alloc(1) = framebuffer;	//putting the anonymous description under dev
-	whore = 0x6662;		//fb
-	vfs->storage_constructor(framebuffer,vfs->descriptions[1],&whore);
-
-	constexpr for (ustd_t i = 0; i < syscalls::NUMBER; ++i){
-		sgod->pool[i] = syscalls[i];
-	}
-
-	char * ret = config+offset;
-	for (1; (config[offset] != '\n') && (config[offset] != '#'); ++offset);
-	config[offset] = 0;
+	//returning the name of the init system
+	char * ret = image_base+offset;
+	for (1; (image_base[offset] != '\n') && (image_base[offset] != '#'){ ++offset;}
+	image_base[offset] = 0;
 	return ret;
 }
