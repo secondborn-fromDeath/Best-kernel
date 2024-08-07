@@ -10,10 +10,11 @@ void report_IO(ustd_t findex, ustd_t action){		//takes an index into the vfs, no
 			Thread * thread = &process->workers->pool[k];
 			for (ustd_t w = 0; w < thread->pollnum){
 				pollfd * poll = &thread->poll[w];
-				if (poll)&&(process->descs[poll->fdesc]->findex == findex){
-					poll->retaction = action;
-					thread->sigset ^= SIGPOLLING;
-				}
+				if !(poll){ continue;}
+				if !(process->descs[poll->fdesc]->findex == findex){ continue;}
+				if (process->descs[poll->fdesc]->reqactions & action){ continue;}
+				poll->retaction = action;
+				thread->sigset ^= SIGPOLLING;
 			}
 		}
 	}
