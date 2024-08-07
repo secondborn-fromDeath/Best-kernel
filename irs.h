@@ -50,10 +50,8 @@ B(0),B(1),B(2),B(3),B(4),B(5),B(6),B(7),B(8),B(9),B(10),B(11),B(12),B(13),B(14),
 &receive_data,\
 &boot_wake,\
 &halt,\
-&highprio_halt,\//wake is vector 255
+&highprio_halt,\
 ];
 
-
-
-
+#define WAKE 255
 };
