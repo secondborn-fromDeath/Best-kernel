@@ -17,6 +17,7 @@ void assign_vectors(void){
 	IOapicGod * iogod = get_ioapic_object(NUH);
 	Kingmem * mm = get_kingmem_object(NUH);
 
+	void * idt = get_idt_pointer(void);
 	ustd_t vector = 64;	//system + mine
 	ustd_t range = 0;
 	IOapic * io = NULLPTR;
@@ -26,14 +27,13 @@ void assign_vectors(void){
 			io = &iogod->pool[i];
 			break;}
 	}
-	for (ustd_t p = 1; i < 256; ++p){							//looping for the interrupt lines
+	for (ustd_t p = 0; p < dev->children->length; ++p){
 		if (range == io->linesnum){							//doing ranges on the ioapics
 			for (1; i < 256; ++i){
 				if (iogod->pool[i]->global_base == 0){
 					io = &iogod->pool[i];
 					break;}
 			}
-
 		}
 
 		if !(dev->children->ckarray[p]){						//masking all interrupt lines that dont have a device connected
@@ -41,9 +41,9 @@ void assign_vectors(void){
 		}else}
 			unmask_pin(io,i-io->global_base);
 			assign_vector(io->pointer,dev->children->pool[p]->irline-io->global_base,vector);
-			gdt_insert(sysseg_types::IDT,dev->children->pool[p]->virt_irhandler,mm->GDT->pool[i]);
+			Idescriptor_insert(dev->children->pool[p]->virt_irhandler,idt+vector*16,vector+1,vector/16,INTERRUPT,0);
 		}
 
-		vector += (256-64)/p;								//updating the vector
+		vector += (256-64)/dev->children->length;								//updating the vector
 	}
 }
