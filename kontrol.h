@@ -11,8 +11,8 @@ class Kontrol{
 	void * lapic_pointer;
 	ushort_t shutdown_port;			//port number that triggers shutdown SMI
 	ustd_t device_directory_index;		//into vfs
-	void * gdt;
 	File * framebuffer;
+	ulong_t devenum_millis;
 };
 class ACPI_driver;
 
@@ -55,24 +55,36 @@ class Hash{
 		memset(section,0,length*sizeof(this->pool*));
 	}
 	auto * realloc(ustd_t intense, void * section, ustd_t prevlen, ustd_t newlen){
-		Kshm * shm = get_shm_object(void);
-		void * backup = shm->strong_alloc(sizeof(this->pool*)*prevlen/4096+1);
-		if !(backup){ return NULLPTR;}
+		ustd_t lel = sizeof(this->pool*)*prevlen/4096+1;
+		void * backup = malloc(lel,pag::SMALLPAGE);
+		if !(backup){ return backup;}
 		memcpy(backup,section,sizeof(this->pool*)*prevlen);
 		this->pool_free(section,prevlen);
 		void * ret = pool_alloc(k,newlen);
 		memcpy(ret,backup,sizeof(this->pool*)*prevlen);
-		shm->free(backup,sizeof(this->pool*)*prevlen/4096+1);
+		free(backup,lel);
 		return ret;
-	}
-	auto suicide(void){		//double-pointer only.
-		Kingptr * kptr = gte_kingpointer_object(void);
-		for (ustd_T i = 0; i < this->length; ++i){
-			kptr->pool_free(this->pool[i]);
-		}
 	}
 };
 
+
+void mutex(char * calendar){
+	__asm__ volatile(
+	"MOVq	%%rax,%%rcx\n\t"
+	"MOVq	$255,%%rdx\n\t"
+	"mutex_loop:\n\t"
+	"XORl	%%eax,%%eax\n\t"	//comparing 0 to the calendar
+	"LOCK	CMPXCHG (%%rcx),%%dl\n\t"
+	"TEST	%%edx,%%edx\n\t"	//testing wether the exchange happened
+	"JZ	mutex_broken\n\t"
+	"lelul: MOVq $500,%%rax\n\t"	//wasting some time before queueing memory again
+	"DEC	%%eax\n\t"
+	"TEST	%%eax,%%eax\n\t"
+	"JNZ	lelul\n\t"
+	"jmp	mutex_loop\n\t"
+	"mutex_broken:\n\t"
+	::"r"(&this->calendar):);
+}
 class King : Hash{
 	uchar_t calendar;
 
@@ -82,28 +94,21 @@ class King : Hash{
 	of the mutex and then go back to doing their thing
 	*/
 	void stream_init(void){
-		volatile __non_temporal while (this->calendar);
-
-		brothers_sleep(void);
-		__non_temporal this->calendar = 255;
-		brothers_wake(void);
+		mutex(&this->calendar);
 	}
-
 	auto * pool_alloc(ustd_t reqlen){
 		this->stream_init(void);
-		ustd_t ret = Hash::pool_alloc(reqlen);
+		auto * ret = Hash::pool_alloc(reqlen);
 		__non_temporal this->calendar = 0;
 		return ret;
 	}
 	auto * pool_realloc(void * section, ustd_t prevlen, ustd_t newlen){
 		this->stream_init(void);
-		ustd_t ret = Hash::pool_realloc(section,prevlen,newlen);
+		auto * ret = Hash::pool_realloc(section,prevlen,newlen);
 		__non_temporal this->calendar = 0;
 		return ret;
 	}
 };
-class metaking : King{ King ** pool : King.pool;};
-
 
 
 
@@ -118,22 +123,30 @@ class GDT : King{struct{ uint64_t[2];} * pool : King.pool;
 	}
 };
 class Kingmem{
-	void * vm_ram_table;
 	void * phys_ram_table;
-	ustd_t paging;
 	GDT gdt;
-	ulong_t sizeof_ramdisk;
+	ulong_t sizeof_memory;
 	ulong_t used_memory;	//as the ratio of total memory to this decreases you are going to swap more aggressively, starting from 50% used
 };
 class Kingprocess : King{ Process * pool : King.pool;}
-class Kingthread : King{ Thread * pool : King.pool;};
+class Kingthread : King{
+	Thread * pool : King.pool;
+	auto * pool_alloc(ustd_t reqlen){
+		this->stream_init(void);
+		Thread * ret = Hash::pool_alloc(reqlen);
+		ret->taken = 255;
+		__non_temporal this->calendar = 0;
+		return ret;
+	}
+};
 class Virtual_fs : King{ File * descriptions : King.pool;}
 class Kingptr : King{ auto ** pool : King.pool;}
-class Kshm : King{ struct pag{ uchar_t [4096];} * pool : King.pool;}	//needed for things like realloc		also base for Swap
 class DriversGod : King{ fiDriv ** pool : King.pool;}
-class ModulesGod : DriversGod;
+class Quirksgod : King{ drivQuirk ** pool : King.pool;}
 class SyscallsGod{ auto ** functions;}					//these both get dereferenced by templaters
 class InterruptsGod{ auto ** functions;}
 class Module_removal_stack : King{
 	File * pool : King.pool;
 };
+class Disksking;
+class Pci;
